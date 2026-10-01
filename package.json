@@ -7,6 +7,7 @@
     "dev": "panda codegen && panda cssgen --outfile src/panda.css && vite",
     "build": "panda codegen && panda cssgen --outfile src/panda.css && vite build",
     "preview": "vite preview",
+    "deploy": "npm run build && sh scripts/deploy.sh",
     "codegen": "panda codegen && panda cssgen --outfile src/panda.css"
   },
   "dependencies": {
