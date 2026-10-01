@@ -1,0 +1,10 @@
+node_modules
+dist
+styled-system
+.env
+.env.local
+
+src/panda.css
+
+.claude/settings.local.json
+.DS_Store
