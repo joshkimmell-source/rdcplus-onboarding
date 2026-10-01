@@ -506,7 +506,7 @@ function TourCard({ tour }: { tour: Tour }) {
       <Card.Content className={hstack({ gap: '400', padding: '300', alignItems: 'stretch' })}>
         <img src={home.photo} alt="" className={css({ w: '[120px]', h: '[88px]', borderRadius: '200', objectFit: 'cover', flexShrink: '0' })} />
         <div className={vstack({ alignItems: 'flex-start', gap: '100', flex: '1', minW: '0', justifyContent: 'center' })}>
-          <p className={css({ textStyle: 'headingSm', color: 'text.base' })}>{fmtDay(tour.date)} · {tour.time}</p>
+          <p className={css({ textStyle: 'headingSm', color: 'text.base' })}>{fmtDay(tour.date)} · {tour.time || 'Any time'}</p>
           <p className={css({ textStyle: 'bodySm', color: 'text.alternate' })}>1 showing · {home.address1}, {home.address2}</p>
           <div className={hstack({ gap: '200', mt: '100' })}>
             <Tag dataColor="yellowSubtle">Requested</Tag>
@@ -802,9 +802,9 @@ function TourStep({ draft, onChange, attempted, savedIds, onCalendarToggle }: {
         <DatePicker label="Date" required value={draft.date} minDate={startOfToday()}
           onChange={date => onChange({ date })} error={attempted && !draft.date} errorText="Choose a date"
           onCalendarOpen={() => onCalendarToggle(true)} onCalendarClose={() => onCalendarToggle(false)} />
-        <SelectInput label="Time" required value={draft.time}
-          options={[{ text: 'Choose a time', value: '', hidden: true }, ...TIME_OPTIONS]}
-          onChange={e => onChange({ time: e.target.value })} error={attempted && !draft.time} errorText="Choose a time" />
+        <SelectInput label="Time" value={draft.time} helperText="Optional"
+          options={[{ text: 'Any time', value: '' }, ...TIME_OPTIONS]}
+          onChange={e => onChange({ time: e.target.value })} />
       </div>
       <TextInput label={`Note for ${AGENT.first}`} value={draft.note} helperText="Optional"
         onChange={(e: InputEvt) => onChange({ note: e.target.value })} />
@@ -1018,7 +1018,7 @@ export default function Shell({ locked = false }: { locked?: boolean }) {
   }
   function valid(k: StepKey) {
     if (k === 'agent') return !!(profile.name.trim() && profile.email.trim())
-    if (k === 'tour') return !!(draft.homeId && draft.date && draft.time)
+    if (k === 'tour') return !!(draft.homeId && draft.date)
     if (k === 'home') return owns !== 'yes' || !!address.trim()
     return true
   }
@@ -1036,8 +1036,11 @@ export default function Shell({ locked = false }: { locked?: boolean }) {
     if (key === 'tour') {
       const home = listingById(draft.homeId)
       setTours(t => [...t, { id: `t${Date.now()}`, homeId: draft.homeId, date: draft.date!, time: draft.time, note: draft.note }])
-      sendChat(`I’d like to tour ${home.address1} on ${fmtDay(draft.date!)} at ${draft.time}.${draft.note ? ` ${draft.note}` : ''}`,
-        `Got it! I’ll confirm ${fmtDay(draft.date!)} at ${draft.time} with the listing agent and let you know.`, draft.homeId)
+      const when = `${fmtDay(draft.date!)}${draft.time ? ` at ${draft.time}` : ''}`
+      sendChat(`I’d like to tour ${home.address1} on ${when}.${draft.note ? ` ${draft.note}` : ''}`,
+        draft.time
+          ? `Got it! I’ll confirm ${when} with the listing agent and let you know.`
+          : `Got it! I’ll find a time on ${when} that works with the listing agent and let you know.`, draft.homeId)
       setDraft(EMPTY_DRAFT)
       setTourInRun(true)
       created = true
