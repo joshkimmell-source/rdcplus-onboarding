@@ -1088,9 +1088,9 @@ const TIME_OPTIONS = Array.from({ length: 19 }, (_, i) => {
   return { value: `${String(h).padStart(2, '0')}:${mm}`, text: `${((h + 11) % 12) + 1}:${mm} ${h < 12 ? 'AM' : 'PM'}` }
 })
 function fmtTourWhen(date?: Date, time?: string) {
-  if (!date || !time) return ''
+  if (!date) return ''
   const t = TIME_OPTIONS.find(o => o.value === time)
-  return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${t ? t.text : time}`
+  return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${t ? t.text : time || 'Any time'}`
 }
 function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d }
 
@@ -1447,10 +1447,9 @@ function TourSetupStep({ draft, onChange, attempted, onCalendarToggle }: {
           onChange={date => onChange({ date })} error={attempted && !draft.date} errorText="Choose a date"
           onCalendarOpen={() => onCalendarToggle(true)} onCalendarClose={() => onCalendarToggle(false)} />
         <SelectInput
-          label="Time" required value={draft.time}
-          options={[{ text: 'Choose a time', value: '', hidden: true }, ...TIME_OPTIONS]}
+          label="Time" value={draft.time} helperText="Optional"
+          options={[{ text: 'Any time', value: '' }, ...TIME_OPTIONS]}
           onChange={e => onChange({ time: e.target.value })}
-          error={attempted && !draft.time} errorText="Choose a time"
         />
       </div>
       <StepSection title="Preview">
@@ -1991,7 +1990,7 @@ export default function Shell({ locked = false }: { locked?: boolean }) {
   }
   function valid(k: StepKey) {
     if (k === 'profile') return !!(profile.name.trim() && profile.brokerage.trim() && profile.area.trim())
-    if (k === 'tour') return draft.homeIds.length > 0 && !!draft.date && !!draft.time
+    if (k === 'tour') return draft.homeIds.length > 0 && !!draft.date
     return true
   }
 
