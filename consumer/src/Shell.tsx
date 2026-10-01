@@ -881,9 +881,9 @@ function SetupChecklist({ status, onOpen, onDismiss, focusRef }: {
   const verb = (k: StepKey) => (status[k] === 'skipped' ? 'Resume' : 'Start')
   return (
     <div ref={focusRef} tabIndex={-1} role="region" aria-label="Setup checklist"
-      className={css({ px: { base: '500', sm: '700' }, pt: '400', outline: 'none' })}>
-      <div className={css({ borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: '300', overflow: 'hidden' })}>
-        <div className={hstack({ gap: '300', paddingY: '200', paddingLeft: '500', paddingRight: '200', bg: 'bg.inverse', color: 'text.inverse' })}>
+      className={css({ px: { base: '500', sm: '700' }, py: '300', outline: 'none' })}>
+      <div className={css({ borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: '200', overflow: 'hidden' })}>
+        <div className={hstack({ gap: '400', minH: '[52px]', paddingY: '300', paddingLeft: '500', paddingRight: '300', bg: 'bg.inverse', color: 'text.inverse' })}>
           <ProgressRing done={done} total={TASKS.length} />
           <div className={css({ flex: '1', minW: '0' })}>
             <p className={css({ textStyle: 'bodySm', fontWeight: 'semibold', color: 'text.inverse', truncate: true })}>
@@ -906,7 +906,7 @@ function SetupChecklist({ status, onOpen, onDismiss, focusRef }: {
             {TASKS.map(k => {
               const s = status[k]
               return (
-                <li key={k} className={hstack({ gap: '300', paddingX: '500', paddingY: '200', minH: '[44px]', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })}>
+                <li key={k} className={hstack({ gap: '400', paddingX: '500', paddingY: '300', minH: '[44px]', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })}>
                   <StatusCircle status={s} />
                   <span className={css({ flex: '1', minW: '0', textStyle: 'bodySm', color: s === 'done' ? 'text.alternate' : 'text.base', textDecoration: s === 'done' ? 'line-through' : 'none', fontWeight: k === next ? 'semibold' : 'normal' })}>
                     {STEP_DEFS[k].task}
