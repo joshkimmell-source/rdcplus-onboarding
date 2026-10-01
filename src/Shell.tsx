@@ -1044,7 +1044,7 @@ const ASIDE_STEPS: StepKey[] = ['profile', 'assist']
 const STEP_DEFS: Record<StepKey, { label: string; task: string; title: string; sub: string; skip: string | null }> = {
   profile: { label: 'Profile setup', task: 'Complete your profile', title: 'Confirm your profile', sub: 'Clients see this on invites, shared homes, and tour confirmations.', skip: null },
   invite: { label: 'Invite clients', task: 'Invite your first client', title: 'Invite your clients', sub: 'Send an invite or share your link. Clients create a free realtor.com account to connect with you.', skip: 'Skip for now' },
-  sample: { label: 'Try a sample client', task: 'Message your sample client', title: 'Meet Alex, your sample client', sub: 'Alex is a demo client so you can try RDC+ before real clients sign up. Nothing here is sent to anyone.', skip: 'Skip for now' },
+  sample: { label: 'Try a sample client', task: 'Message your sample client', title: 'Meet Alex, your sample client', sub: 'Alex is a demo client so you can try Realtor.com+ before real clients sign up. Nothing here is sent to anyone.', skip: 'Skip for now' },
   tour: { label: 'Set up a tour', task: 'Schedule a tour', title: 'Set up a tour with Alex', sub: 'Pick homes and a time. It’ll show up under Tours.', skip: 'Skip for now' },
   assist: { label: 'Meet RealAssist™ AI', task: 'Meet RealAssist™ AI', title: 'Meet RealAssist™ AI', sub: 'After setup, your assistant is docked on the right of the workspace. Open it any time with Ask RealAssist™ AI. Here’s what it can do.', skip: 'Skip intro' },
 }
@@ -1919,7 +1919,7 @@ function AssistantPanel({
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
-export default function Shell() {
+export default function Shell({ locked = false }: { locked?: boolean }) {
   const [active, setActive] = useState<NavId>('clients')
   const [subnavOpen, setSubnavOpen] = useState(true)
   // The docked panel is closed by default and stays closed after onboarding. It only
@@ -2117,7 +2117,7 @@ export default function Shell() {
   const mainMarginRight = panelOpen && !expanded ? PANEL_WIDTH : '0px'
 
   const title = active === 'clients' ? (activeClient?.name ?? 'Clients') : active === 'search' ? 'Search' : 'Tours'
-  const flowTitle = taskMode ? (multi ? 'Finish setting up RDC+' : STEP_DEFS[key].label) : `Welcome to RDC+, ${firstName}`
+  const flowTitle = taskMode ? (multi ? 'Finish setting up Realtor.com+' : STEP_DEFS[key].label) : `Welcome to Realtor.com+, ${firstName}`
   const ctaLabel = key === 'tour' ? 'Schedule tour' : taskMode && !multi ? 'Done' : idx === seq.length - 1 ? 'Finish' : 'Continue'
 
   return (
@@ -2171,7 +2171,7 @@ export default function Shell() {
       />
 
       <OnboardingFlow
-        open={flowOpen} seq={seq} idx={idx} title={flowTitle} ctaLabel={ctaLabel}
+        open={flowOpen && !locked} seq={seq} idx={idx} title={flowTitle} ctaLabel={ctaLabel}
         onBack={onBack} onSkip={onSkip} onContinue={onContinue}
         onFinishLater={() => finish()} onDismiss={() => { if (!calendarOpen.current) finish() }} onAfterClose={onModalClosed}
         assist={ASIDE_STEPS.includes(key)
