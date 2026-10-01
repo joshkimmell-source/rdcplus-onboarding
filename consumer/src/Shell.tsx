@@ -52,7 +52,7 @@ const AGENT = {
   email: 'georgia.booth@brightwaterrealty.com',
   photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=160&h=160&fit=crop',
 }
-const INITIAL_PROFILE = { name: 'Jordan Lee', email: 'jordan.lee@gmail.com', phone: '' }
+const INITIAL_PROFILE = { name: 'Jordan Lee', email: 'jordan.lee@email.com', phone: '' }
 type Profile = typeof INITIAL_PROFILE
 
 const unsplash = (id: string) => `https://images.unsplash.com/${id}?w=600&h=400&fit=crop`
