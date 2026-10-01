@@ -141,7 +141,7 @@ const TASKS: StepKey[] = ['agent', 'search', 'tour', 'home']
 const STEP_DEFS: Record<StepKey, { label: string; task: string; title: string; sub: string; skip: string | null }> = {
   agent: {
     label: 'Your agent', task: 'Meet your agent',
-    title: 'Georgia Booth invited you to Realtor.com+',
+    title: 'Georgia Booth is ready to work with you',
     sub: 'Confirm your details so Georgia can reach you. Your chat with her is already open.',
     skip: null,
   },
@@ -477,8 +477,8 @@ function ListingsScreen({ savedOrder, savedSearches, tours, chatHomeIds, actions
         <Tabs.Content value="searches">
           <div className={vstack({ alignItems: 'stretch', gap: '300', paddingY: '500' })}>
             {savedSearches.length ? savedSearches.map(s => (
-              <Card key={s.id} bordered spacing="0">
-                <Card.Content className={hstack({ gap: '400', padding: '400' })}>
+              <Card key={s.id} bordered spacing="400">
+                <Card.Content className={hstack({ gap: '400' })}>
                   <div className={vstack({ alignItems: 'flex-start', gap: '100', flex: '1', minW: '0' })}>
                     <p className={css({ textStyle: 'bodyMd', fontWeight: 'semibold', color: 'text.base' })}>{s.name}</p>
                     <p className={css({ textStyle: 'caption', color: 'text.alternate' })}>{matches(s.criteria).length} homes · Daily email alerts · Shared with {AGENT.first}</p>
@@ -502,8 +502,8 @@ function ListingsScreen({ savedOrder, savedSearches, tours, chatHomeIds, actions
 function TourCard({ tour }: { tour: Tour }) {
   const home = listingById(tour.homeId)
   return (
-    <Card bordered spacing="0">
-      <Card.Content className={hstack({ gap: '400', padding: '300', alignItems: 'stretch' })}>
+    <Card bordered spacing="300">
+      <Card.Content className={hstack({ gap: '400', alignItems: 'stretch' })}>
         <img src={home.photo} alt="" className={css({ w: '[120px]', h: '[88px]', borderRadius: '200', objectFit: 'cover', flexShrink: '0' })} />
         <div className={vstack({ alignItems: 'flex-start', gap: '100', flex: '1', minW: '0', justifyContent: 'center' })}>
           <p className={css({ textStyle: 'headingSm', color: 'text.base' })}>{fmtDay(tour.date)} · {tour.time || 'Any time'}</p>
@@ -619,8 +619,8 @@ function MyHomeScreen({ home, onAdd }: { home: OwnedHome | null; onAdd: () => vo
       </Tabs>
       <section className={vstack({ alignItems: 'stretch', gap: '400' })}>
         <h2 className={css({ textStyle: 'headingMd', color: 'text.base' })}>Your next home</h2>
-        <Card bordered spacing="0" className={css({ maxW: '[360px]' })}>
-          <Card.Content className={vstack({ alignItems: 'flex-start', gap: '200', padding: '500' })}>
+        <Card bordered spacing="500" className={css({ maxW: '[360px]' })}>
+          <Card.Content className={vstack({ alignItems: 'flex-start', gap: '200' })}>
             <IconCashReward size={4} />
             <p className={css({ textStyle: 'headingSm', color: 'text.base' })}>What can I afford?</p>
             <p className={css({ textStyle: 'bodySm', color: 'text.alternate' })}>Use your equity to see a budget for your next home.</p>
@@ -723,8 +723,8 @@ function AgentStep({ profile, onChange, attempted }: { profile: Profile; onChang
   const missing = (v: string) => attempted && !v.trim()
   return (
     <>
-      <Card bordered spacing="0">
-        <Card.Content className={hstack({ gap: '400', padding: '500', alignItems: 'flex-start' })}>
+      <Card spacing="400">
+        <Card.Content className={hstack({ gap: '400', alignItems: 'flex-start' })}>
           <AgentAvatar size="lg" />
           <div className={vstack({ alignItems: 'flex-start', gap: '100', flex: '1', minW: '0' })}>
             <p className={css({ textStyle: 'headingSm', color: 'text.base' })}>{AGENT.name}</p>
