@@ -4,7 +4,8 @@ styled-system
 .env
 .env.local
 
-src/panda.css
+**/src/panda.css
 
 .claude/settings.local.json
 .DS_Store
+.vite
