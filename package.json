@@ -1,12 +1,13 @@
 {
   "name": "rdcplus-onboarding",
   "private": true,
-  "description": "Realtor.com+ onboarding prototypes: agent/ and consumer/ (separate Vite apps)",
+  "description": "Realtor.com+ onboarding prototypes: agent/, agent-walkthrough/ and consumer/ (separate Vite apps)",
   "scripts": {
-    "install:all": "npm --prefix agent install && npm --prefix consumer install",
+    "install:all": "npm --prefix agent install && npm --prefix agent-walkthrough install && npm --prefix consumer install",
     "dev:agent": "npm --prefix agent run dev",
+    "dev:walkthrough": "npm --prefix agent-walkthrough run dev",
     "dev:consumer": "npm --prefix consumer run dev",
-    "build": "npm --prefix agent run build && npm --prefix consumer run build",
+    "build": "npm --prefix agent run build && npm --prefix agent-walkthrough run build && npm --prefix consumer run build",
     "deploy": "sh scripts/deploy.sh"
   }
 }

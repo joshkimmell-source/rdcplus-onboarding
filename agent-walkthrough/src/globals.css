@@ -1,0 +1,50 @@
+@layer reset, base, tokens, recipes, utilities;
+
+@import '@rdc-npm/rdc-ui-v4/rdc-globals.min.css' layer(reset);
+
+/* ─── RealAssist™ chrome globals ──────────────────────────────────────────────
+   Ported from the reference `shell.css`. These are surface-wide treatments that
+   can't live on a single Panda class: the brand text selection, link colors, the
+   thinking-dot pulse, and the two custom scrollbar treatments the panel/threads use. */
+
+::selection {
+  background: #fee2e3;
+}
+
+a {
+  color: #1a1816;
+}
+a:hover {
+  color: #d92228;
+}
+
+@keyframes raPulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+/* Thin scrollbar for the panel body, transcript, and threads list. */
+.ra-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d3cfca transparent;
+}
+.ra-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ra-scroll::-webkit-scrollbar-thumb {
+  background: #d3cfca;
+  border-radius: 8px;
+}
+.ra-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Hidden horizontal scrollbar (e.g. a filter/pill row that scrolls under drag). */
+.ra-scroll-x {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.ra-scroll-x::-webkit-scrollbar {
+  display: none;
+}
