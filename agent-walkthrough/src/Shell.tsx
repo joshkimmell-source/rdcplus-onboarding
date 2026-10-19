@@ -4,10 +4,13 @@ import {
   Button,
   Card,
   Checkbox,
+  DatePicker,
   Link,
   Modal,
   Popover,
   PropertyCard,
+  SelectInput,
+  Table,
   Tag,
   TextInput,
   usePortalTarget,
@@ -31,6 +34,7 @@ import {
   IconHeart,
   IconHome,
   IconShare,
+  IconExport,
   IconTrash,
   IconArrowDown,
   IconRealAssist,
@@ -53,7 +57,7 @@ import { css, cva, cx } from 'styled-system/css'
 import { grid, hstack, vstack, wrap } from 'styled-system/patterns'
 import {
   TOURS, TOUR_BY_ID,
-  type ClientTab, type Condition, type DetailTab, type Route, type Sheet, type TourId,
+  type ClientTab, type TourTab, type Condition, type DetailTab, type Route, type Sheet, type TourId,
 } from './tours'
 import { Coachmark } from './Coachmark'
 import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboarding'
@@ -68,7 +72,7 @@ import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboardi
 //
 // Shell extensions for this prototype:
 //   • a client header on the Clients screen (sample tag, summary, Client activity /
-//     Chat / Schedule tour) and a Client activity view that swaps in for the feed
+//     Chat / Add to tour) and a Client activity view that swaps in for the feed
 //   • a Feed Members popover on the header title (Haven Popover), with Chat with group
 //   • Chat in a floating window (bottom-right, as in the product), opened from the
 //     rail's Chat cell or the Feed Members popover
@@ -145,6 +149,7 @@ const SAMPLE_CLIENT: Client = {
 const ALEX_FIRST = 'Alex'
 
 const SUBNAV_TABS: ClientTab[] = ['Active', 'Invited', 'Requests']
+const TOUR_TABS: TourTab[] = ['Upcoming', 'Past', 'All']
 
 // The Clients screen's three tiles.
 const CLIENT_FEED = {
@@ -170,6 +175,31 @@ const VIEWS: { id: ClientsView; label: string; Icon: React.ElementType }[] = [
   { id: 'grid',  label: 'Grid view',  Icon: IconGridView },
   { id: 'table', label: 'Table view', Icon: IconTableView },
 ]
+
+function ViewToggle({ view, onView }: { view: ClientsView; onView: (v: ClientsView) => void }) {
+  return (
+    <div className={css({ display: 'inline-flex', bg: 'bg.alternate', borderRadius: 'pill', p: '200' })}>
+      {VIEWS.map(({ id, label, Icon }) => {
+        const on = view === id
+        return (
+          <button
+            key={id}
+            onClick={() => onView(id)}
+            aria-pressed={on} aria-label={label} title={label}
+            className={css({
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              w: '44px', h: '32px', flexShrink: '0', borderRadius: 'pill', border: 'none', cursor: 'pointer',
+              color: 'text.base', bg: on ? 'bg.base' : 'transparent', boxShadow: on ? 'raised' : 'none',
+              _hover: on ? {} : { bg: 'bg.base' },
+            })}
+          >
+            <Icon />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 // ─── Listing feed ─────────────────────────────────────────────────────────────
 // Alex's saved homes, as Haven `PropertyCard`s: `meta` is Haven's snake_case
@@ -242,17 +272,12 @@ const ACTIVITY: { Icon: React.ElementType; text: string; when: string }[] = [
   { Icon: IconUserPlus, text: 'Accepted your invite', when: '3 days ago' },
 ]
 
-// Four preset tour times, always in the future: the next Saturday (morning and
-// afternoon), the Sunday after, and the Tuesday after that.
-function presetSlots(now = new Date()): string[] {
-  const day = (offset: number, h: number, m: number) => {
-    const d = new Date(now); d.setDate(d.getDate() + offset); d.setHours(h, m, 0, 0); return d
-  }
-  const toSat = ((6 - now.getDay() + 7) % 7) || 7
-  const dates = [day(toSat, 10, 0), day(toSat, 13, 30), day(toSat + 1, 11, 0), day(toSat + 3, 17, 30)]
-  return dates.map(d => `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`)
+// Tour dates read like "Sat, Oct 17".
+const fmtTourDate = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+// The next Saturday, used by "Show me".
+function nextSaturday(now = new Date()) {
+  const d = new Date(now); d.setDate(d.getDate() + (((6 - now.getDay() + 7) % 7) || 7)); return d
 }
-const SLOTS = presetSlots()
 
 // ─── Sample-client chat ───────────────────────────────────────────────────────
 type ChatMsg = { from: 'agent' | 'client'; text: string; homeId?: string }
@@ -270,10 +295,10 @@ const CHIPS: Chip[] = [
 // clients join by invite, so it points the agent at Invite client.
 type AssistAction = { id: string; title: string; desc: string; Icon: React.ElementType; prompt: string; reply: string }
 const ASSIST_ACTIONS: AssistAction[] = [
-  { id: 'add',    title: 'Add Client',          Icon: IconUserPlus,      desc: 'Guide agent through client onboarding with members, search, and notes', prompt: 'Help me add a new client.', reply: 'Clients join Realtor.com+ by invite. Choose Invite client above your client list, add their name and email, and I’ll help set up their search once they accept.' },
-  { id: 'catch',  title: 'Catch Up',            Icon: IconCatchUp,       desc: 'Daily briefing that analyzes unread messages, notifications, and recent activity to suggest prioritized actions', prompt: 'Catch me up on my clients.', reply: 'Here’s your catch-up. Alex viewed 1428 Maple Heights Dr three times since yesterday and saved 902 Orchard Ct, which has an open house Saturday. Want to suggest a tour of both?' },
-  { id: 'pulse',  title: 'Client Pulse',        Icon: IconChart,         desc: 'Analyze a client to get deeper insights, engagement patterns, member activity, and actionable suggestions', prompt: 'Show me Alex’s pulse.', reply: 'Alex is highly engaged: 23 home views this week, mostly 3–4 bed homes under $630K in Maple Heights. Weekday evenings are the best time to reach out.' },
-  { id: 'search', title: 'Search Optimization', Icon: IconSearchSpark,   desc: 'Analyze client behavior to detect preferences and recommend search refinements', prompt: 'Optimize Alex’s search.', reply: 'Alex keeps saving homes with big yards and skips anything over $640K. Want me to tighten the saved search to $550K–$640K with a yard?' },
+  { id: 'add',    title: 'Invite client',       Icon: IconUserPlus,      desc: 'Guide agent through client onboarding with members, search, and notes', prompt: 'Help me add a new client.', reply: 'Clients join Realtor.com+ by invite. Choose Invite client above your client list, add their name and email, and I’ll help set up their search once they accept.' },
+  { id: 'catch',  title: 'View priorities',    Icon: IconCatchUp,       desc: 'Daily briefing that analyzes unread messages, notifications, and recent activity to suggest prioritized actions', prompt: 'Catch me up on my clients.', reply: 'Here’s your catch-up. Alex viewed 1428 Maple Heights Dr three times since yesterday and saved 902 Orchard Ct, which has an open house Saturday. Want to suggest a tour of both?' },
+  { id: 'pulse',  title: 'Check Client Pulse', Icon: IconChart,         desc: 'Analyze a client to get deeper insights, engagement patterns, member activity, and actionable suggestions', prompt: 'Show me Alex’s pulse.', reply: 'Alex is highly engaged: 23 home views this week, mostly 3–4 bed homes under $630K in Maple Heights. Weekday evenings are the best time to reach out.' },
+  { id: 'search', title: 'Optimize Search',     Icon: IconSearchSpark,   desc: 'Analyze client behavior to detect preferences and recommend search refinements', prompt: 'Optimize Alex’s search.', reply: 'Alex keeps saving homes with big yards and skips anything over $640K. Want me to tighten the saved search to $550K–$640K with a yard?' },
   { id: 'tour',   title: 'Coordinate Tour',     Icon: IconCalendarClock, desc: 'Coordinate showings with timeline, instructions, and outreach messages', prompt: 'Help me plan a tour for Alex.', reply: 'I can plan a Saturday route for 1428 Maple Heights Dr and 902 Orchard Ct, about 12 minutes apart, and draft a confirmation text for Alex.' },
 ]
 const CATCH_UP = ASSIST_ACTIONS[1]
@@ -297,33 +322,81 @@ const NAV_ITEMS: { id: NavId; label: string; Icon: React.ElementType }[] = [
   { id: 'tours',   label: 'Tours',   Icon: IconCalendar },
 ]
 
-type Invite = { id: string; name: string; email: string; mobile: string }
-type BookedTour = { id: string; homes: string[]; slot: string }
+// `sample` invites come from "Show me" (or the sample email) and are removed when the tour ends.
+type Invite = { id: string; name: string; email: string; mobile: string; sample?: boolean }
+type BookedTour = { id: string; homes: string[]; client: string; sample: boolean; date: string; time: string; when: 'upcoming' | 'past' }
+// Tours the agent already has, so the Tours screen reads as a working list. New tours go first.
+const SEED_TOURS: BookedTour[] = [
+  { id: 's1', homes: ['l1', 'l3', 'l4'], client: 'Marisol Reyes & Kevin Lin', sample: false, date: 'Thu, Oct 22', time: '5:15 PM', when: 'upcoming' },
+  { id: 's2', homes: ['l5', 'l1'], client: 'Arjun Patel', sample: false, date: 'Sat, Oct 24', time: '1:15 PM', when: 'upcoming' },
+  { id: 's3', homes: ['l3', 'l4', 'l5'], client: 'Ngozi Okafor', sample: false, date: 'Sun, Sep 27', time: '2:15 PM', when: 'past' },
+  { id: 's4', homes: ['l4', 'l1'], client: 'Thao Nguyen', sample: false, date: 'Sun, Sep 20', time: '12:15 PM', when: 'past' },
+  { id: 's5', homes: ['l5', 'l3'], client: 'Rachel Goldberg & Sam Hayes', sample: false, date: 'Sun, Sep 13', time: '3:15 PM', when: 'past' },
+]
+const toursFor = (tours: BookedTour[], tab: TourTab) => tab === 'All' ? tours : tours.filter(t => t.when === (tab === 'Past' ? 'past' : 'upcoming'))
+// Stops are half an hour apart, starting at the tour's time.
+function stopTime(start: string, i: number) {
+  const [, h, m, ap] = /(\d+):(\d+) (AM|PM)/.exec(start)!
+  const mins = (Number(h) % 12 + (ap === 'PM' ? 12 : 0)) * 60 + Number(m) + i * 30
+  const hh = Math.floor(mins / 60) % 24
+  return `${hh % 12 || 12}:${String(mins % 60).padStart(2, '0')} ${hh >= 12 ? 'PM' : 'AM'}`
+}
+type TourModal = 'closed' | 'choose' | 'new'
 
 // ─── Workspace state ──────────────────────────────────────────────────────────
 
 type Workspace = {
   route: Route; sheet: Sheet; detailTab: DetailTab; clientTab: ClientTab
   subnavOpen: boolean; expanded: boolean; over: boolean
-  feedMenuOpen: boolean; chatOpen: boolean; chatExpanded: boolean; scheduleOpen: boolean; inviteOpen: boolean
+  feedMenuOpen: boolean; chatOpen: boolean; chatExpanded: boolean; tourModal: TourModal; inviteOpen: boolean
   chat: ChatMsg[]; chipsUsed: string[]
-  draft: { homes: string[]; slot: string | null }
+  // Homes ticked in the feed, and the new tour being built from them.
+  selected: string[]
+  tourTab: TourTab; tourId: string | null
+  newChats: number
+  draft: { clientId: string | null; date: Date | null }
   tours: BookedTour[]; invites: Invite[]; assistMsgs: Msg[]
 }
 const INITIAL_WS: Workspace = {
   route: 'clients', sheet: null, detailTab: 'homes', clientTab: 'Active',
-  subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, scheduleOpen: false, inviteOpen: false,
-  chat: [CHAT_OPENER], chipsUsed: [], draft: { homes: [], slot: null }, tours: [], invites: [], assistMsgs: [],
+  subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, tourModal: 'closed', inviteOpen: false,
+  chat: [CHAT_OPENER], chipsUsed: [], selected: [], tourTab: 'Upcoming', tourId: null, newChats: 0, draft: { clientId: null, date: null }, tours: SEED_TOURS, invites: [], assistMsgs: [],
 }
 // The known state every tour starts from.
 const TOUR_RESET: Partial<Workspace> = {
   route: 'clients', sheet: null, detailTab: 'homes', clientTab: 'Active',
-  subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, scheduleOpen: false, inviteOpen: false, draft: { homes: [], slot: null },
+  subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, tourModal: 'closed', inviteOpen: false, selected: [], tourTab: 'Upcoming', tourId: null, draft: { clientId: null, date: null },
 }
 
-type Baseline = { chat: number; tours: number; assist: number; invites: number }
+// The view a stop's target lives in. Going Back restores it, since the agent may have
+// moved on to another screen, dialog, or panel since they were last here.
+function viewFor(target: string, ws: Workspace): Partial<Workspace> {
+  const clients: Partial<Workspace> = { route: 'clients', tourModal: 'closed', inviteOpen: false }
+  const homes = ws.selected.length ? ws.selected : ['l1', 'l3']
+  switch (target) {
+    case 'rail': case 'clienthead': case 'feedtiles': case 'thisweek': case 'activitytab':
+      return { ...clients, chatOpen: false, feedMenuOpen: false }
+    case 'clientlist': return { ...clients, subnavOpen: true }
+    case 'askra': return { ...clients, sheet: null }
+    case 'feedtitle': return { ...clients, feedMenuOpen: false, chatOpen: false }
+    case 'feedchat': return { ...clients, feedMenuOpen: true, chatOpen: false }
+    case 'chatwindow': case 'chatthread': return { ...clients, feedMenuOpen: false, chatOpen: true }
+    case 'addtotour': return { ...clients, selected: homes }
+    case 'tourdialog': return { route: 'clients', inviteOpen: false, selected: homes, tourModal: 'choose' }
+    case 'pickdate': case 'createbtn':
+      return { route: 'clients', inviteOpen: false, selected: homes, tourModal: 'new', draft: { clientId: SAMPLE_CLIENT.id, date: ws.draft.date ?? nextSaturday() } }
+    case 'tourslist': return { route: 'tours', subnavOpen: true, tourModal: 'closed' }
+    case 'assistpanel': case 'assistreply': case 'newchat': case 'expandpanel': case 'threads': case 'closepanel':
+      return { ...clients, sheet: 'assist' }
+    case 'addclient': return { ...clients, clientTab: 'Active', subnavOpen: true }
+    case 'addbody': case 'inviteform': return { route: 'clients', tourModal: 'closed', inviteOpen: true }
+    default: return {}
+  }
+}
+
+type Baseline = { newChats: number; chat: number; tours: number; assist: number; invites: number }
 const agentMsgs = (ws: Workspace) => ws.chat.filter(m => m.from === 'agent').length
-const baselineOf = (ws: Workspace): Baseline => ({ chat: agentMsgs(ws), tours: ws.tours.length, assist: ws.assistMsgs.length, invites: ws.invites.length })
+const baselineOf = (ws: Workspace): Baseline => ({ newChats: ws.newChats, chat: agentMsgs(ws), tours: ws.tours.length, assist: ws.assistMsgs.length, invites: ws.invites.length })
 
 // Conditions mean "something new happened during this tour", against the baseline.
 function isMet(c: Condition, ws: Workspace, b: Baseline) {
@@ -331,11 +404,16 @@ function isMet(c: Condition, ws: Workspace, b: Baseline) {
     case 'feedMenuOpen': return ws.feedMenuOpen
     case 'chatOpen': return ws.chatOpen
     case 'chatSent': return agentMsgs(ws) > b.chat
-    case 'scheduleOpen': return ws.scheduleOpen
-    case 'homesPicked': return ws.draft.homes.length > 0
-    case 'slotPicked': return !!ws.draft.slot
+    case 'homesPicked': return ws.selected.length > 0
+    case 'addToTourOpen': return ws.tourModal !== 'closed'
+    case 'newTourStarted': return ws.tourModal === 'new'
+    case 'clientPicked': return !!ws.draft.clientId
+    case 'datePicked': return !!ws.draft.date
     case 'tourBooked': return ws.tours.length > b.tours
     case 'assistOpen': return ws.sheet === 'assist'
+    case 'assistNewChat': return ws.newChats > b.newChats
+    case 'assistExpanded': return ws.expanded
+    case 'assistCollapsed': return !ws.expanded
     case 'assistAsked': return ws.assistMsgs.length > b.assist
     case 'addOpen': return ws.inviteOpen
     case 'invited': return ws.invites.length > b.invites
@@ -433,9 +511,9 @@ function Heading({ as: Tag = 'h2', className, children }: { as?: React.ElementTy
 }
 
 // Pill-shaped search input with a leading magnifier (inert stand-in).
-function SearchField({ placeholder, ariaLabel }: { placeholder: string; ariaLabel: string }) {
+function SearchField({ placeholder, ariaLabel, flush }: { placeholder: string; ariaLabel: string; flush?: boolean }) {
   return (
-    <div className={css({ display: 'flex', alignItems: 'center', gap: '300', flexShrink: '0', h: '[38px]', px: '[14px]', mx: '400', borderRadius: '[40px]', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', bg: 'bg.base' })}>
+    <div className={css({ display: 'flex', alignItems: 'center', gap: '300', flexShrink: '0', h: '[38px]', px: '[14px]', mx: flush ? '0' : '400', borderRadius: '[40px]', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', bg: 'bg.base' })}>
       <IconSearch size={14} className={css({ color: 'text.alternate' })} />
       <input
         placeholder={placeholder}
@@ -650,9 +728,10 @@ function SubnavTab({ label, active, onClick, tourId }: { label: string; active: 
   )
 }
 
-function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours, onInvite }: {
+function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours, tourTab, onTourTab, tourId, onPickTour, onInvite }: {
   variant: 'clients' | 'tours'; activeId?: string; shown: boolean; onClose: () => void
-  tab: ClientTab; onTab: (t: ClientTab) => void; clients: Client[]; tours: BookedTour[]; onInvite: () => void
+  tab: ClientTab; onTab: (t: ClientTab) => void; clients: Client[]; tours: BookedTour[]
+  tourTab: TourTab; onTourTab: (t: TourTab) => void; tourId?: string; onPickTour: (id: string) => void; onInvite: () => void
 }) {
   const title = variant === 'clients' ? 'Clients' : 'Tours'
   const rows = variant === 'clients' ? clients.filter(c => c.status === tab) : []
@@ -665,7 +744,7 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
       className={css({ flexShrink: '0', overflow: 'hidden' })}
       style={{ width: shown ? SUBNAV_WIDTH : '0px', transition: `width 220ms ${EASE}` }}
       aria-hidden={!shown}
-      data-tour={variant === 'clients' ? 'clientlist' : undefined}
+      data-tour={variant === 'clients' ? 'clientlist' : 'tourslist'}
     >
       <div
         className={vstack({
@@ -748,25 +827,50 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
             </div>
           </>
         ) : (
-          <div className={vstack({ alignItems: 'stretch', gap: '[2px]', mx: '300' })}>
-            {tours.map(t => {
-              const first = listingById(t.homes[0])
-              return (
-                <div key={t.id} className={hstack({ gap: '300', alignItems: 'center', p: '300', borderRadius: '300', _hover: { bg: 'gray.200' } })}>
-                  <img src={first.photo} alt="" className={css({ w: '[40px]', h: '[40px]', borderRadius: '200', objectFit: 'cover', flexShrink: '0' })} />
+          <>
+            <SearchField placeholder="Search by client name" ariaLabel="Search tours" />
+            <div className={css({ display: 'flex', alignItems: 'center', gap: '500', px: '[20px]' })}>
+              {TOUR_TABS.map(t => (
+                <SubnavTab key={t} label={t === 'All' ? t : `${t} (${toursFor(tours, t).length})`} active={tourTab === t} onClick={() => onTourTab(t)} />
+              ))}
+            </div>
+            <div className={vstack({ alignItems: 'stretch', gap: '[2px]', mx: '300' })}>
+              {toursFor(tours, tourTab).map(t => (
+                <button
+                  key={t.id} type="button" onClick={() => onPickTour(t.id)} aria-current={t.id === tourId ? 'true' : undefined}
+                  className={hstack({ gap: '300', alignItems: 'center', p: '300', borderRadius: '300', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', bg: t.id === tourId ? 'gray.200' : 'transparent', _hover: { bg: 'gray.200' } })}
+                >
+                  <AvatarWithStatus name={t.client} initials={initialsOf(t.client)} online={false} />
                   <div className={css({ flex: '[1 1 auto]', minW: '0' })}>
-                    <p className={css({ fontWeight: 'semibold', color: 'text.base', m: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })} style={{ fontSize: 13.5 }}>
-                      {t.homes.length > 1 ? `${first.address1} +${t.homes.length - 1}` : first.address1}
-                    </p>
-                    <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 11.5 }}>{SAMPLE_CLIENT.name} · {t.slot}</p>
+                    <p className={css({ fontWeight: 'semibold', color: 'text.base', m: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })} style={{ fontSize: 13.5 }}>{t.client}</p>
+                    <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 11.5 }}>{t.date} | {t.time} | {t.homes.length} {t.homes.length === 1 ? 'Stop' : 'Stops'}</p>
                   </div>
-                </div>
-              )
-            })}
-            {tours.length === 0 && <EmptyNote>No tours yet. Start one from a client with Schedule tour.</EmptyNote>}
-          </div>
+                </button>
+              ))}
+              {toursFor(tours, tourTab).length === 0 && <EmptyNote>No tours here yet. Select homes in a client’s feed and choose Add to tour.</EmptyNote>}
+            </div>
+          </>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── Search header (prototype extension) ──────────────────────────────────────
+
+const SEARCH_FILTERS = ['Price', 'Property type', 'Status', 'Bedrooms', 'Bathrooms', '# of parking spots', 'Square feet', 'Has an open house']
+
+function SearchFilters() {
+  const [view, setView] = useState<ClientsView>('map')
+  return (
+    <div className={css({ display: 'flex', alignItems: 'center', gap: '200', flexWrap: 'wrap' })}>
+      <Button styleType="Secondary" size="sm" startIcon={<IconSort />}>Filters</Button>
+      <span className={css({ display: 'flex', '& button': { borderColor: '[#B41C21]', color: '[#B41C21]' } })}>
+        <Button styleType="Secondary" size="sm" startIcon={<IconFlame size={16} />}>Hotsheet</Button>
+      </span>
+      {SEARCH_FILTERS.map(f => <Button key={f} styleType="Secondary" size="sm">{f}</Button>)}
+      <div className={css({ flex: '1' })} />
+      <ViewToggle view={view} onView={setView} />
     </div>
   )
 }
@@ -851,7 +955,8 @@ const FOLD_ITEMS: { label: string; icon: React.ReactNode }[] = [
 // the flex parent, not its contents), so there's no ResizeObserver feedback loop.
 // `primary` is the screen's own dark action (Client activity on a client feed). It sits
 // left of the Ask pill and never folds.
-function ActionBar({ onAsk, panelOpen, primary }: { onAsk: () => void; panelOpen: boolean; primary?: React.ReactNode }) {
+// `bare` drops the Agent notifications / Hotsheets / Market data / Favorites cluster (Search has its own).
+function ActionBar({ onAsk, panelOpen, primary, bare, secondary }: { onAsk: () => void; panelOpen: boolean; primary?: React.ReactNode; bare?: boolean; secondary?: React.ReactNode }) {
   const rowRef = useRef<HTMLDivElement>(null)
   // Number of collapsible pills (counted from the right — Favorites first) showing a label.
   const [labeled, setLabeled] = useState(FOLD_ITEMS.length)
@@ -889,7 +994,7 @@ function ActionBar({ onAsk, panelOpen, primary }: { onAsk: () => void; panelOpen
         { label: 'Export list' }, { label: 'Print' },
         { separator: true }, { label: 'View settings' },
       ]} />
-      {FOLD_ITEMS.map((it, i) => {
+      {!bare && FOLD_ITEMS.map((it, i) => {
         const collapsed = i < foldThreshold
         // Wrapped so the flex row can't shrink the button below its natural width — the
         // fold measurement above sums each child's offsetWidth, which relies on that.
@@ -903,6 +1008,7 @@ function ActionBar({ onAsk, panelOpen, primary }: { onAsk: () => void; panelOpen
           </span>
         )
       })}
+      {secondary && <span className={css({ flexShrink: '0', display: 'flex' })}>{secondary}</span>}
       {primary && <span className={css({ flexShrink: '0', display: 'flex' })}>{primary}</span>}
       {!panelOpen && (
         <ActionPill tone="brand" label="Ask RealAssist AI" onClick={onAsk} icon={<IconRealAssist size={16} />} tourId="askra">Ask RealAssist™ AI</ActionPill>
@@ -970,34 +1076,34 @@ function FeedPopover({ open, onOpenChange, onChat }: {
 }
 
 function MainHeader({
-  title, onAsk, panelOpen, showSubnavButton, subnavLabel, onOpenSubnav, feed, primary,
+  title, onAsk, panelOpen, showSubnavButton, subnavLabel, onOpenSubnav, feed, primary, secondary, lead, below, bare,
 }: {
   title: string; onAsk: () => void; panelOpen: boolean
   showSubnavButton?: boolean; subnavLabel?: string; onOpenSubnav?: () => void
   // On Clients the title is the client feed, which opens the feed popover.
   feed?: React.ReactNode
-  primary?: React.ReactNode
+  primary?: React.ReactNode; secondary?: React.ReactNode; bare?: boolean
+  // Search: a search field in place of the title, a filter row under the header, and no action cluster.
+  lead?: React.ReactNode; below?: React.ReactNode
 }) {
   return (
-    <header
-      className={css({
-        display: 'flex', alignItems: 'center', gap: '400',
-        px: '600', py: '500', bg: 'bg.base', flexShrink: '0',
-      })}
-    >
+    <header className={vstack({ alignItems: 'stretch', gap: '400', px: '600', py: '500', bg: 'bg.base', flexShrink: '0' })}>
+    <div className={css({ display: 'flex', alignItems: 'center', gap: '400' })}>
       {/* Show-subnav control — appears only when the Clients/Tours subnav is collapsed */}
       {showSubnavButton && (
         <CircleButton size={32} label={subnavLabel ? `Show ${subnavLabel}` : 'Show panel'} onClick={onOpenSubnav}>
           <IconPanelOpen size={18} />
         </CircleButton>
       )}
-      <div className={vstack({ alignItems: 'flex-start', gap: '[2px]', minW: '0', maxW: '45%' })}>
+      {lead ?? <div className={vstack({ alignItems: 'flex-start', gap: '[2px]', minW: '0', maxW: '45%' })}>
         {feed ?? <h1
           className={css({ m: '0', fontWeight: 'semibold', color: 'text.base', maxW: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' })}
           style={{ fontFamily: DISPLAY_FONT, fontSize: 24, lineHeight: '28px', letterSpacing: '-0.02em' }}
         >{title}</h1>}
-      </div>
-      <ActionBar onAsk={onAsk} panelOpen={panelOpen} primary={primary} />
+      </div>}
+      <ActionBar onAsk={onAsk} panelOpen={panelOpen} primary={primary} secondary={secondary} bare={bare || !!lead} />
+    </div>
+    {below}
     </header>
   )
 }
@@ -1054,10 +1160,9 @@ function ActionButton({ label, onClick, children }: { label: string; onClick?: (
   return <CircleButton size={26} label={label} onClick={onClick}>{children}</CircleButton>
 }
 
-function ListingCard({ listing }: { listing: Listing }) {
-  // Selection and save live on the card — nothing outside it reads them, and the
-  // prototype has no server to persist a change to.
-  const [selected, setSelected] = useState(false)
+function ListingCard({ listing, selected, onSelect }: { listing: Listing; selected: boolean; onSelect: (selected: boolean) => void }) {
+  // Save lives on the card; selection is lifted so the bulk bar (Add to tour) can read it.
+  // The prototype has no server to persist either to.
   const [saved, setSaved] = useState(listing.saved)
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
@@ -1076,7 +1181,7 @@ function ListingCard({ listing }: { listing: Listing }) {
         // descendants; Haven's Checkbox is an input inside a label, so re-enable it here.
         topRightComponent: (
           <span style={{ pointerEvents: 'auto' }}>
-            <Checkbox checked={selected} onChange={(_e, next) => setSelected(next)} aria-label={`Select ${listing.address1}`} />
+            <Checkbox checked={selected} onChange={(_e, next) => onSelect(next)} aria-label={`Select ${listing.address1}`} />
           </span>
         ),
         bottomLeftComponent: saved ? <Tag dataColor="gray">Saved</Tag> : undefined,
@@ -1110,23 +1215,36 @@ function ListingCard({ listing }: { listing: Listing }) {
   )
 }
 
-// Client header (prototype extension): sample tag, one-line summary, and Schedule tour.
-// Client activity is the dark action in the main header, as in the product; Chat lives
-// in the Feed Members popover on the header title and in the rail.
-function ClientHeader({ onSchedule }: { onSchedule: () => void }) {
+// Client header (prototype extension): sample tag and a one-line summary. Client
+// activity is the dark action in the main header, as in the product; Chat lives in the
+// Feed Members popover on the header title and in the rail. Tours are built from the
+// feed: tick homes, then Add to tour in the bulk bar.
+function ClientHeader() {
   return (
-    <div data-tour="clienthead" className={vstack({ alignItems: 'stretch', gap: '300' })}>
+    <div className={vstack({ alignItems: 'stretch', gap: '300' })}>
       <div className={hstack({ gap: '300', alignItems: 'center', flexWrap: 'wrap' })}>
         <span className={css({ display: 'flex', flexShrink: '0', whiteSpace: 'nowrap' })}><Tag dataColor="yellowSubtle">Sample client</Tag></span>
-        <div className={css({ flex: '1' })} />
-        <span data-tour="schedbtn" className={css({ display: 'flex' })}>
-          <Button styleType="Primary" size="sm" startIcon={<IconCalendar size={16} />} onClick={onSchedule}>Schedule tour</Button>
-        </span>
       </div>
-      <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 14, lineHeight: '20px' }}>
-        Budget {SAMPLE_CLIENT.budget} · Saved search: Maple Heights, 3+ bd · Next: reply to Alex’s message
-      </p>
       <SampleNotice>Alex is a sample client with sample data. Nothing you send or schedule reaches a real person.</SampleNotice>
+    </div>
+  )
+}
+
+// Sticks to the bottom of the feed once a home is ticked. Add to tour opens the tour dialog.
+function BulkBar({ count, onAddToTour, onClear }: { count: number; onAddToTour: () => void; onClear: () => void }) {
+  return (
+    <div
+      data-tour="addtotour" role="region" aria-label="Actions for selected homes"
+      className={hstack({
+        position: 'sticky', bottom: '400', alignSelf: 'center', mt: 'auto', gap: '300', px: '500', py: '300',
+        bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: 'pill', boxShadow: 'float', zIndex: '[5]',
+      })}
+    >
+      <p aria-live="polite" className={css({ m: '0', fontWeight: 'semibold', color: 'text.base', whiteSpace: 'nowrap' })} style={{ fontSize: 14 }}>
+        {count} {count === 1 ? 'home' : 'homes'} selected
+      </p>
+      <Button styleType="Ghost" size="sm" onClick={onClear}>Clear</Button>
+      <Button styleType="Primary" size="sm" startIcon={<IconCalendar size={16} />} onClick={onAddToTour}>Add to tour</Button>
     </div>
   )
 }
@@ -1145,16 +1263,18 @@ function AddSearchTile({ onClick }: { onClick: () => void }) {
   )
 }
 
-function ClientsScreen({ detailTab, onDetailTab, onSchedule, onAddSearch }: {
-  detailTab: DetailTab; onDetailTab: (t: DetailTab) => void; onSchedule: () => void; onAddSearch: () => void
+function ClientsScreen({ detailTab, onDetailTab, selected, onSelect, onAddToTour, onClear, onAddSearch }: {
+  detailTab: DetailTab; onDetailTab: (t: DetailTab) => void
+  selected: string[]; onSelect: (id: string, next: boolean) => void; onAddToTour: () => void; onClear: () => void
+  onAddSearch: () => void
 }) {
   const [pill, setPill] = useState(PILLS[0])
   const [view, setView] = useState<ClientsView>('grid')
   const activity = detailTab === 'activity'
 
   return (
-    <div className={vstack({ alignItems: 'stretch', gap: '600', px: '600', pt: '300', pb: '600', overflowY: 'auto' })}>
-      <ClientHeader onSchedule={onSchedule} />
+    <div data-tour="clienthead" className={vstack({ alignItems: 'stretch', gap: '600', px: '600', pt: '300', pb: '600', overflowY: 'auto' })}>
+      <ClientHeader />
 
       {/* Tiles: Saved & Tour requests + Saved Searches */}
       <div data-tour="feedtiles" className={css({ display: 'flex', gap: '900', flexWrap: 'wrap', alignSelf: 'flex-start' })}>
@@ -1205,26 +1325,7 @@ function ClientsScreen({ detailTab, onDetailTab, onSchedule, onAddSearch }: {
             >
               <IconSort />
             </button>
-            <div className={css({ display: 'inline-flex', bg: 'bg.alternate', borderRadius: 'pill', p: '200' })}>
-              {VIEWS.map(({ id, label, Icon }) => {
-                const on = view === id
-                return (
-                  <button
-                    key={id}
-                    onClick={() => setView(id)}
-                    aria-pressed={on} aria-label={label} title={label}
-                    className={css({
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      w: '44px', h: '32px', flexShrink: '0', borderRadius: 'pill', border: 'none', cursor: 'pointer',
-                      color: 'text.base', bg: on ? 'bg.base' : 'transparent', boxShadow: on ? 'raised' : 'none',
-                      _hover: on ? {} : { bg: 'bg.base' },
-                    })}
-                  >
-                    <Icon />
-                  </button>
-                )
-              })}
-            </div>
+            <ViewToggle view={view} onView={setView} />
           </div>
 
           <div className={css({ borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })} />
@@ -1237,64 +1338,103 @@ function ClientsScreen({ detailTab, onDetailTab, onSchedule, onAddSearch }: {
                 className={css({ display: 'grid', gap: '[20px]' })}
                 style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(288px, 100%), 1fr))' }}
               >
-                {g.ids.map(id => (
-                  <ListingCard key={id} listing={listingById(id)} />
+                {g.ids.map((id, ii) => (
+                  // The first card is where the Schedule a tour tour starts.
+                  <div key={id} data-tour={gi === 0 && ii === 0 ? 'pickhomes' : undefined}>
+                    <ListingCard listing={listingById(id)} selected={selected.includes(id)} onSelect={next => onSelect(id, next)} />
+                  </div>
                 ))}
               </div>
             </section>
           ))}
         </>
       )}
+
+      {!activity && selected.length > 0 && <BulkBar count={selected.length} onAddToTour={onAddToTour} onClear={onClear} />}
     </div>
   )
 }
 
 // ─── Tours screen (replaces the shell's stub) ─────────────────────────────────
 
-function ToursScreen({ tours }: { tours: BookedTour[] }) {
+function ToursScreen({ tour }: { tour?: BookedTour }) {
+  if (!tour) return <div className={css({ p: '600' })}><EmptyNote>No tour selected. Select homes in a client’s feed and choose Add to tour.</EmptyNote></div>
+  const homes = tour.homes.map(listingById)
+  const past = tour.when === 'past'
+  const [layout, setLayout] = useState<'Vertical' | 'Horizontal'>('Vertical')
+  const vertical = layout === 'Vertical'
   return (
-    <div className={vstack({ alignItems: 'stretch', gap: '600', px: '600', pt: '300', pb: '600', overflowY: 'auto' })}>
-      <section data-tour="tourslist" aria-label="Upcoming tours" className={vstack({ alignItems: 'stretch', gap: '500' })}>
-        <GroupHeading>Upcoming</GroupHeading>
-        {tours.length === 0 && <EmptyNote>No tours yet. Start one from a client with Schedule tour.</EmptyNote>}
-        {[...tours].reverse().map(t => {
-          const homes = t.homes.map(listingById)
-          return (
-            <Card key={t.id} bordered spacing="500">
-              <Card.Content className={hstack({ gap: '500', alignItems: 'flex-start' })}>
-                <img src={homes[0].photo} alt="" className={css({ w: '[112px]', h: '[84px]', borderRadius: '200', objectFit: 'cover', flexShrink: '0' })} />
-                <div className={vstack({ alignItems: 'flex-start', gap: '200', flex: '1', minW: '0' })}>
-                  <div className={wrap({ gap: '200' })}>
-                    <Tag dataColor="greenSubtle">Scheduled</Tag>
-                    <Tag dataColor="yellowSubtle">Sample client</Tag>
-                  </div>
-                  <p className={css({ fontWeight: 'semibold', color: 'text.base', m: '0' })} style={{ fontFamily: DISPLAY_FONT, fontSize: 16, lineHeight: '22px' }}>
-                    {homes.length > 1 ? `${homes.length} homes with ${SAMPLE_CLIENT.name}` : homes[0].address1}
-                  </p>
-                  <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 13, lineHeight: '18px' }}>
-                    {t.slot} · {homes.length > 1 ? homes.map(h => h.address1).join(' · ') : `With ${SAMPLE_CLIENT.name}`}
-                  </p>
-                  <div className={wrap({ gap: '200', pt: '100' })}>
-                    <Button styleType="Secondary" size="sm" startIcon={<IconCalendar size={16} />}>Add to calendar</Button>
-                    <Button styleType="Secondary" size="sm">Draft a text</Button>
-                  </div>
-                </div>
-              </Card.Content>
-            </Card>
-          )
-        })}
-      </section>
+    <div className={vstack({ alignItems: 'stretch', gap: '0', flex: '1', minH: '0' })}>
+      <div className={hstack({ gap: '300', px: '600', pt: '300', pb: '300', flexShrink: '0' })}>
+        <p className={css({ fontWeight: 'semibold', color: 'text.base', m: '0' })} style={{ fontSize: 16 }}>{tour.date}</p>
+        {tour.sample && <Tag dataColor="yellowSubtle">Sample client</Tag>}
+        <div className={css({ flex: '1' })} />
+        <div role="group" aria-label="Layout" className={css({ display: 'inline-flex', bg: 'bg.alternate', borderRadius: 'pill', p: '200' })}>
+          {(['Vertical', 'Horizontal'] as const).map(l => (
+            <button
+              key={l} type="button" onClick={() => setLayout(l)} aria-pressed={layout === l}
+              className={css({
+                px: '400', h: '32px', borderRadius: 'pill', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'semibold', color: 'text.base',
+                bg: layout === l ? 'bg.base' : 'transparent', boxShadow: layout === l ? 'raised' : 'none',
+              })}
+              style={{ fontSize: 14 }}
+            >{l}</button>
+          ))}
+        </div>
+      </div>
+      <div className={css({ display: 'flex', flexDirection: vertical ? 'column' : 'row', flex: '1', minH: '0' })}>
+      <div className={vstack({ alignItems: 'stretch', gap: '0', minW: '0', minH: '0', flex: vertical ? 'none' : '1' })} style={vertical ? { maxHeight: '55%' } : undefined}>
+      <div className={css({ overflow: 'auto', flex: '[0 1 auto]', minH: '0' })}>
+        <Table spacing="compact" lines aria-label={`Homes on the tour with ${tour.client}`}>
+          <Table.Header>
+            <Table.Row>
+              <Table.Cell>Order</Table.Cell>
+              <Table.Cell>Status</Table.Cell>
+              <Table.Cell>Address</Table.Cell>
+              <Table.Cell>Time</Table.Cell>
+              <Table.Cell>Tour status</Table.Cell>
+              <Table.Cell>Notes</Table.Cell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {homes.map((h, i) => (
+              <Table.Row key={h.id}>
+                <Table.Cell>{String.fromCharCode(65 + i)}</Table.Cell>
+                <Table.Cell>Active</Table.Cell>
+                <Table.Cell>{h.address1}</Table.Cell>
+                <Table.Cell>{stopTime(tour.time, i)}</Table.Cell>
+                <Table.Cell><Tag dataColor={past ? 'graySubtle' : 'greenSubtle'}>{past ? 'Completed' : 'Confirmed'}</Tag></Table.Cell>
+                <Table.Cell>{h.openHouse ? h.openHouse.text : '—'}</Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table>
+      </div>
+      <div className={hstack({ gap: '400', px: '600', py: '300', flexShrink: '0', borderBottomWidth: '100', borderBottomStyle: 'solid', borderColor: 'border.base' })}>
+        <Link href="#">Add listing</Link>
+        <Link href="#">Add a stop</Link>
+      </div>
+      </div>
+      <TourMap count={homes.length} fill={!vertical} />
+      </div>
     </div>
   )
 }
 
-// ─── Stubbed screens ──────────────────────────────────────────────────────────
-
-function ScreenPlaceholder({ label }: { label: string }) {
+// A stand-in street map with a lettered pin per stop. The product embeds a live map.
+const MAP_PINS = [{ x: 22, y: 30 }, { x: 56, y: 58 }, { x: 78, y: 28 }, { x: 40, y: 78 }]
+function TourMap({ count, label = 'Map of the tour stops', fill }: { count: number; label?: string; fill?: boolean }) {
   return (
-    <div className={vstack({ alignItems: 'center', justifyContent: 'center', flex: '1', gap: '200', color: 'text.alternate' })}>
-      <p className={css({ textStyle: 'bodyMd', fontWeight: 'medium' })}>{label}</p>
-      <p className={css({ textStyle: 'bodySm', color: 'text.disabled' })}>Search isn’t part of this prototype (the real surface is a Leaflet map)</p>
+    <div role="img" aria-label={label} className={css({ position: 'relative', flex: '1', minH: fill ? '0' : '[160px]', bg: 'gray.100', overflow: 'hidden', color: 'gray.300' })}>
+      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {[12, 31, 47, 66, 84].map(y => <line key={`h${y}`} x1="0" x2="100" y1={y} y2={y + (y % 3) * 3 - 3} stroke="currentColor" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
+        {[8, 27, 44, 63, 81, 94].map(x => <line key={`v${x}`} y1="0" y2="100" x1={x} x2={x + (x % 4) * 3 - 4} stroke="currentColor" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
+        <path d="M0 90 C 30 60, 60 70, 100 20" fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {MAP_PINS.slice(0, count).map((p, i) => (
+        <span key={i} className={css({ position: 'absolute', w: '[28px]', h: '[28px]', ml: '[-14px]', mt: '[-14px]', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'circle', bg: 'text.base', color: 'bg.base', fontWeight: 'bold', boxShadow: 'float' })}
+          style={{ left: `${p.x}%`, top: `${p.y}%`, fontSize: 13 }}>{String.fromCharCode(65 + i)}</span>
+      ))}
     </div>
   )
 }
@@ -1478,6 +1618,7 @@ function AssistantPanel({
   return (
     <aside
       aria-label="RealAssist AI"
+      data-tour="assistpanel"
       aria-hidden={!open}
       className={css({ position: 'absolute', top: '0', right: '0', bottom: '0', zIndex: '[20]', bg: 'bg.alternate', borderLeftWidth: '100', borderLeftStyle: 'solid', borderColor: 'gray.200', overflow: 'hidden', display: 'flex' })}
       style={{ width, visibility: open ? 'visible' : 'hidden', transition: `width 220ms ${EASE}` }}
@@ -1487,6 +1628,7 @@ function AssistantPanel({
         className={css({ flexShrink: '0', overflow: 'hidden', borderRightWidth: '100', borderRightStyle: 'solid', borderColor: 'border.base' })}
         style={{ width: dockW, background: '#F8F8F7', transition: `width 220ms ${EASE}` }}
         aria-hidden={!dockedInHeader}
+        data-tour="threads"
       >
         <div style={{ width: 300, height: '100%' }}>
           <ThreadsList threads={THREADS} onClose={onToggleOver} onNewChat={onNewChat} />
@@ -1504,12 +1646,14 @@ function AssistantPanel({
             <img src="assets/logo-realassist-ai.svg" alt="RealAssist™ AI" className={css({ w: 'auto', display: 'block' })} style={{ height: 32 }} />
           </div>
           {!dockedInHeader && (
-            <CircleButton label="New conversation" onClick={onNewChat}><IconCompose size={16} /></CircleButton>
+            <span data-tour="newchat" className={css({ display: 'flex' })}><CircleButton label="New conversation" onClick={onNewChat}><IconCompose size={16} /></CircleButton></span>
           )}
-          <CircleButton label={expanded ? 'Collapse panel' : 'Expand panel'} onClick={onToggleExpand}>
-            {expanded ? <IconCollapsePanel size={14} /> : <IconExpandPanel size={14} />}
-          </CircleButton>
-          <CircleButton label="Close RealAssist" onClick={onClose}><IconClose size={12} /></CircleButton>
+          <span data-tour="expandpanel" className={css({ display: 'flex' })}>
+            <CircleButton label={expanded ? 'Collapse panel' : 'Expand panel'} onClick={onToggleExpand}>
+              {expanded ? <IconCollapsePanel size={14} /> : <IconExpandPanel size={14} />}
+            </CircleButton>
+          </span>
+          <span data-tour="closepanel" className={css({ display: 'flex' })}><CircleButton label="Close RealAssist" onClick={onClose}><IconClose size={12} /></CircleButton></span>
         </div>
 
         {/* Body — launcher (composer on top) until the first turn, then transcript + composer.
@@ -1551,7 +1695,7 @@ function ChatWindow({ open, right, expanded, onToggleExpand, onClose, ...body }:
   if (!open) return null
   return (
     <section
-      role="dialog" aria-label={`Chat with ${SAMPLE_CLIENT.name}`}
+      role="dialog" data-tour="chatwindow" aria-label={`Chat with ${SAMPLE_CLIENT.name}`}
       className={vstack({ position: 'absolute', bottom: '600', zIndex: '[30]', alignItems: 'stretch', gap: '0', bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'gray.200', borderRadius: '300', boxShadow: 'float', overflow: 'hidden' })}
       style={{ right, width: expanded ? CHAT_W_EXPANDED : CHAT_W, height: 'min(560px, calc(100vh - 120px))', transition: `width 220ms ${EASE}, right 220ms ${EASE}` }}
     >
@@ -1634,54 +1778,76 @@ function ChatThread({ chat, chipsUsed, onChip, onSend }: {
   )
 }
 
-// ─── Schedule a tour (prototype extension) ────────────────────────────────────
-// A Haven Modal, opened from Schedule tour on the client header. `children` is where a
-// running tour's coachmark mounts (see `ModalCoachmark`).
-function ScheduleModal({ open, draft, onToggleHome, onSlot, onBook, onClose, children }: {
-  open: boolean; draft: Workspace['draft']; onToggleHome: (id: string) => void; onSlot: (s: string) => void
-  onBook: () => void; onClose: () => void; children?: React.ReactNode
+// ─── Add to tour (prototype extension) ────────────────────────────────────────
+// A Haven Modal opened from the bulk bar. First it offers the agent's existing tours and
+// New tour; New tour moves to the client and date, then Create tour. `children` is where
+// a running tour's coachmark mounts (see `ModalCoachmark`).
+function TourModalView({
+  mode, homes, tours, clients, draft, onNew, onBack, onClient, onDate, onAddTo, onCreate, onClose, children,
+}: {
+  mode: TourModal; homes: string[]; tours: BookedTour[]; clients: Client[]; draft: Workspace['draft']
+  onNew: () => void; onBack: () => void; onClient: (id: string | null) => void; onDate: (d: Date | null) => void
+  onAddTo: (tourId: string) => void; onCreate: () => void; onClose: () => void; children?: React.ReactNode
 }) {
-  const canBook = draft.homes.length > 0 && !!draft.slot
+  const canCreate = !!draft.clientId && !!draft.date
+  const n = homes.length
+  const today = new Date()
   const legend = css({ fontWeight: 'semibold', color: 'text.base', mb: '300', p: '0' })
   return (
-    <Modal open={open} onClose={onClose} width="560px">
-      <Modal.Header title="Schedule a tour" />
+    <Modal open={mode !== 'closed'} onClose={onClose} width="560px" data-tour={mode === 'choose' ? 'tourdialog' : undefined}>
+      <Modal.Header title={mode === 'new' ? 'New tour' : 'Add to tour'} />
       <Modal.Body>
-        <div className={vstack({ alignItems: 'stretch', gap: '600', py: '400' })}>
-          <div className={hstack({ gap: '300' })}>
-            <AvatarWithStatus name={SAMPLE_CLIENT.name} initials={SAMPLE_CLIENT.initials} />
-            <p className={css({ flex: '1', fontWeight: 'semibold', color: 'text.base', m: '0' })} style={{ fontSize: 14 }}>{SAMPLE_CLIENT.name}</p>
-            <Tag dataColor="yellowSubtle">Sample client</Tag>
+        {mode === 'new' ? (
+          <div className={vstack({ alignItems: 'stretch', gap: '600', py: '400' })}>
+            <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 14 }}>
+              {n} {n === 1 ? 'home' : 'homes'}: {homes.map(id => listingById(id).address1).join(' · ')}
+            </p>
+            <span data-tour="selectclient" className={css({ display: 'block' })}>
+              <SelectInput
+                id="tour-client" label="Client" value={draft.clientId ?? ''}
+                options={[{ value: '', text: 'Select a client' }, ...clients.map(c => ({ value: c.id, text: c.id === SAMPLE_CLIENT.id ? `${c.name} (Sample client)` : c.name }))]}
+                onChange={e => onClient(e.target.value || null)}
+              />
+            </span>
+            {/* Inline calendar: the date is chosen inside the spotlight, not in a dropdown the tour would block. */}
+            <fieldset data-tour="pickdate" className={vstack({ alignItems: 'stretch', gap: '0', border: 'none', m: '0', p: '0' })}>
+              <legend className={legend} style={{ fontSize: 14 }}>Date</legend>
+              <DatePicker id="tour-date" displayType="inline" width="100%" minDate={today} value={draft.date ?? undefined} onChange={d => onDate(d ?? null)} />
+            </fieldset>
+            <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 13 }}>Alex is a sample client, so no one gets a confirmation.</p>
           </div>
-          <fieldset data-tour="pickhomes" className={vstack({ alignItems: 'stretch', gap: '0', border: 'none', m: '0', p: '0' })}>
-            <legend className={legend} style={{ fontSize: 14 }}>Homes</legend>
-            <div className={vstack({ alignItems: 'stretch', gap: '0', bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: '300' })}>
-              {LISTINGS.map((l, i) => (
-                <div key={l.id} className={css({ px: '400', py: '300', borderTopWidth: i ? '100' : '0', borderTopStyle: 'solid', borderColor: 'border.base' })}>
-                  <Checkbox checked={draft.homes.includes(l.id)} onChange={() => onToggleHome(l.id)}>
-                    {l.address1} <span className={css({ color: 'text.alternate' })}>· {fmtPrice(l.price)}</span>
-                  </Checkbox>
+        ) : (
+          <div className={vstack({ alignItems: 'stretch', gap: '500', py: '400' })}>
+            <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 14 }}>
+              Add {n} {n === 1 ? 'home' : 'homes'} to a tour you already have, or start a new one.
+            </p>
+            <span data-tour="createnewtour" className={css({ display: 'flex' })}>
+              <Button styleType="Primary" size="sm" startIcon={<IconPlus size={16} />} onClick={onNew}>New tour</Button>
+            </span>
+            <div className={vstack({ alignItems: 'stretch', gap: '0', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: '300' })}>
+              {tours.length === 0 && <div className={css({ p: '400' })}><EmptyNote>You don’t have any tours yet.</EmptyNote></div>}
+              {tours.map((t, i) => (
+                <div key={t.id} className={hstack({ gap: '300', px: '400', py: '300', borderTopWidth: i ? '100' : '0', borderTopStyle: 'solid', borderColor: 'border.base' })}>
+                  <div className={css({ flex: '1', minW: '0' })}>
+                    <p className={css({ m: '0', fontWeight: 'semibold', color: 'text.base' })} style={{ fontSize: 14 }}>{t.client}</p>
+                    <p className={css({ m: '0', color: 'text.alternate' })} style={{ fontSize: 13 }}>{t.date} · {t.homes.length} {t.homes.length === 1 ? 'home' : 'homes'}</p>
+                  </div>
+                  <Button styleType="Tertiary" size="sm" aria-label={`Add to tour with ${t.client} on ${t.date}`} onClick={() => onAddTo(t.id)}>Add</Button>
                 </div>
               ))}
             </div>
-          </fieldset>
-          <fieldset data-tour="pickslot" className={vstack({ alignItems: 'stretch', gap: '0', border: 'none', m: '0', p: '0' })}>
-            <legend className={legend} style={{ fontSize: 14 }}>Time</legend>
-            <div className={grid({ columns: 2, gap: '200' })}>
-              {SLOTS.map(sl => (
-                <Button key={sl} styleType={draft.slot === sl ? 'Primary' : 'Tertiary'} size="sm" aria-pressed={draft.slot === sl} onClick={() => onSlot(sl)}>{sl}</Button>
-              ))}
-            </div>
-          </fieldset>
-          <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 13 }}>Alex is a sample client, so no one gets a confirmation.</p>
-        </div>
+          </div>
+        )}
       </Modal.Body>
       <Modal.Footer>
+        {mode === 'new' && <Button styleType="Tertiary" size="sm" onClick={onBack}>Back</Button>}
         <div className={css({ flex: '1' })} />
         <Button styleType="Tertiary" size="sm" onClick={onClose}>Cancel</Button>
-        <span data-tour="bookbtn" className={css({ display: 'flex' })}>
-          <Button styleType="Primary" size="sm" disabled={!canBook} onClick={onBook}>Schedule tour</Button>
-        </span>
+        {mode === 'new' && (
+          <span data-tour="createbtn" className={css({ display: 'flex' })}>
+            <Button styleType="Primary" size="sm" disabled={!canCreate} onClick={onCreate}>Create tour</Button>
+          </span>
+        )}
       </Modal.Footer>
       {children}
     </Modal>
@@ -1712,12 +1878,16 @@ function ModalCoachmark({ announce, children }: { announce: string; children: Re
 // phone) with the text-consent line, then a public link for clients whose contact info
 // the agent doesn't have, then bulk options. Spreadsheet upload and CRM connect are
 // present but not part of the prototype. Sending an invite closes the modal.
+// Bulk import (spreadsheet, CRM) is hidden until it's tested in a later sprint.
+const SHOW_BULK_IMPORT = false
 const BULK_NOTE = 'Bulk import isn’t part of this prototype. Try sending an invite.'
 const EMPTY_INVITE = { first: '', last: '', email: '', mobile: '' }
+// What "Show me" types in. Anything else the agent enters is treated as a real client.
+const SAMPLE_INVITE = { first: 'Dana', last: 'Whitfield', email: 'dana.w@email.com', mobile: '(555) 010-0142' }
 const PUBLIC_LINK = 'realtor.com/plus/join/georgia-booth'
 
-function InviteModal({ open, onInvite, onClose, children }: {
-  open: boolean; onInvite: (i: Invite) => void; onClose: () => void; children?: React.ReactNode
+function InviteModal({ open, demo, onInvite, onClose, children }: {
+  open: boolean; demo: typeof EMPTY_INVITE | null; onInvite: (i: Invite) => void; onClose: () => void; children?: React.ReactNode
 }) {
   const [f, setF] = useState(EMPTY_INVITE)
   const [tried, setTried] = useState(false)
@@ -1725,11 +1895,14 @@ function InviteModal({ open, onInvite, onClose, children }: {
   const [copied, setCopied] = useState(false)
   // Each open starts clean.
   useEffect(() => { if (open) { setF(EMPTY_INVITE); setTried(false); setNote(''); setCopied(false) } }, [open])
+  // "Show me" fills the form with the sample client.
+  useEffect(() => { if (demo) setF(demo) }, [demo])
   const emailOk = /\S+@\S+\.\S+/.test(f.email)
+  const realClient = !!(f.first.trim() || f.last.trim() || f.email.trim() || f.mobile.trim()) && f.email.trim().toLowerCase() !== SAMPLE_INVITE.email
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(v => ({ ...v, [k]: e.target.value }))
   const send = () => {
     if (!f.first.trim() || !f.last.trim() || !emailOk) { setTried(true); return }
-    onInvite({ id: `i${Date.now()}`, name: `${f.first.trim()} ${f.last.trim()}`, email: f.email.trim(), mobile: f.mobile.trim() })
+    onInvite({ id: `i${Date.now()}`, name: `${f.first.trim()} ${f.last.trim()}`, email: f.email.trim(), mobile: f.mobile.trim(), sample: !realClient })
   }
   const copy = () => { navigator.clipboard?.writeText(`https://${PUBLIC_LINK}`).catch(() => {}); setCopied(true) }
   const section = vstack({ alignItems: 'stretch', gap: '300', pt: '500', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })
@@ -1750,6 +1923,13 @@ function InviteModal({ open, onInvite, onClose, children }: {
                 error={tried && !emailOk} errorText="Enter an email, like name@email.com" />
               <TextInput label="Phone (recommended)" type="tel" autoComplete="off" value={f.mobile} onChange={set('mobile')}
                 helperText="They’ll get a text too." />
+            </div>
+            <div aria-live="polite">
+              {realClient && (
+                <SampleNotice>
+                  This isn’t sample data. Choosing Invite sends a real invitation to this client{f.mobile.trim() ? ', by email and text' : ''}.
+                </SampleNotice>
+              )}
             </div>
             <div className={hstack({ gap: '300', justifyContent: 'flex-end' })}>
               <Button styleType="Tertiary" size="sm" onClick={onClose}>Cancel</Button>
@@ -1772,14 +1952,14 @@ function InviteModal({ open, onInvite, onClose, children }: {
             </div>
           </section>
 
-          <section aria-label="Bring in your list" className={section}>
+          {SHOW_BULK_IMPORT && <section aria-label="Bring in your list" className={section}>
             <h3 className={sectionTitle} style={{ fontSize: 16 }}>Bring in your list</h3>
             <div className={wrap({ gap: '300' })}>
               <Button styleType="Tertiary" size="sm" startIcon={<IconUpload size={2} />} onClick={() => setNote(BULK_NOTE)}>Upload a spreadsheet</Button>
               <Button styleType="Tertiary" size="sm" startIcon={<IconSyncedCloud size={2} />} onClick={() => setNote(BULK_NOTE)}>Connect your CRM</Button>
             </div>
             <p aria-live="polite" className={css({ color: 'text.alternate', m: '0', _empty: { display: 'none' } })} style={{ fontSize: 13 }}>{note}</p>
-          </section>
+          </section>}
         </div>
       </Modal.Body>
       {children}
@@ -1798,6 +1978,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   listCorner?: ListCorner
 }) {
   const [ws, setWs] = useState<Workspace>(INITIAL_WS)
+  const [inviteDemo, setInviteDemo] = useState<typeof EMPTY_INVITE | null>(null)
   const patch = useCallback((p: Partial<Workspace>) => setWs(s => ({ ...s, ...p })), [])
   const [input, setInput] = useState('')
 
@@ -1830,20 +2011,28 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     setWs(s => ({ ...s, assistMsgs: [...s.assistMsgs, { role: 'user', text }, { role: 'ai', text: 'Got it. In a live prototype I’d act on that and show the result here.' }] }))
     setInput('')
   }
-  const toggleHome = (id: string) => setWs(s => {
-    const h = s.draft.homes
-    return { ...s, draft: { ...s.draft, homes: h.includes(id) ? h.filter(x => x !== id) : [...h, id] } }
+  const selectHome = (id: string, next: boolean) => setWs(s => ({ ...s, selected: next ? [...s.selected.filter(x => x !== id), id] : s.selected.filter(x => x !== id) }))
+  // Creating a tour (or adding to one) clears the selection and lands on Tours.
+  const finishTour = (s: Workspace, tours: BookedTour[], tourId: string): Workspace =>
+    ({ ...s, tours, tourId, tourTab: 'Upcoming', selected: [], draft: { clientId: null, date: null }, tourModal: 'closed', route: 'tours' })
+  const createTour = (force = false) => setWs(s => {
+    const homes = s.selected.length ? s.selected : force ? ['l1', 'l3'] : []
+    const clientId = s.draft.clientId ?? (force ? SAMPLE_CLIENT.id : null)
+    const date = s.draft.date ?? (force ? nextSaturday() : null)
+    const client = [SAMPLE_CLIENT, ...s.invites.map(i => ({ id: i.id, name: i.name }))].find(c => c.id === clientId)
+    if (!homes.length || !client || !date) return s
+    const id = `t${Date.now()}`
+    return finishTour(s, [{ id, homes, client: client.name, sample: client.id === SAMPLE_CLIENT.id, date: fmtTourDate(date), time: '11:00 AM', when: 'upcoming' }, ...s.tours], id)
   })
-  const book = (force = false) => setWs(s => {
-    const d = force ? { homes: s.draft.homes.length ? s.draft.homes : ['l1', 'l3'], slot: s.draft.slot ?? SLOTS[0] } : s.draft
-    if (!d.homes.length || !d.slot) return s
-    return { ...s, tours: [...s.tours, { id: `t${Date.now()}`, homes: d.homes, slot: d.slot }], draft: { homes: [], slot: null }, scheduleOpen: false, route: 'tours' }
-  })
+  const addToTour = (tourId: string) => setWs(s =>
+    finishTour(s, s.tours.map(t => t.id === tourId ? { ...t, homes: [...new Set([...t.homes, ...s.selected])] } : t), tourId))
   // Sending closes the modal and shows the Invited list, where the new client waits.
   const addInvite = (i: Invite) => setWs(s => ({ ...s, invites: [...s.invites, i], inviteOpen: false, clientTab: 'Invited' }))
   const openSheet = (sheet: Exclude<Sheet, null>) => patch({ sheet, expanded: false, over: false, feedMenuOpen: false })
   const openChat = () => patch({ chatOpen: true, feedMenuOpen: false })
-  const openSchedule = () => patch({ scheduleOpen: true, feedMenuOpen: false })
+  // Alex is the tour's client from the start; the select in the modal still lets the agent change it.
+  const startNewTour = () => setWs(s => ({ ...s, tourModal: 'new', draft: { ...s.draft, clientId: s.draft.clientId ?? SAMPLE_CLIENT.id } }))
+  const openTourModal = () => patch({ tourModal: 'choose', feedMenuOpen: false })
   const openInvite = () => patch({ inviteOpen: true, feedMenuOpen: false })
   const closeSheet = () => patch({ sheet: null, expanded: false, over: false })
 
@@ -1853,14 +2042,29 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       case 'feedMenuOpen': return patch({ feedMenuOpen: true })
       case 'chatOpen': return openChat()
       case 'chatSent': return sendChip(CHIPS.find(x => !ws.chipsUsed.includes(x.id)) ?? CHIPS[0])
-      case 'scheduleOpen': return openSchedule()
-      case 'homesPicked': return setWs(s => ({ ...s, draft: { ...s.draft, homes: ['l1', 'l3'] } }))
-      case 'slotPicked': return setWs(s => ({ ...s, draft: { ...s.draft, slot: SLOTS[0] } }))
-      case 'tourBooked': return book(true)
+      case 'homesPicked': return patch({ selected: ['l1', 'l3'] })
+      case 'addToTourOpen': return openTourModal()
+      case 'newTourStarted': return startNewTour()
+      case 'clientPicked': return setWs(s => ({ ...s, draft: { ...s.draft, clientId: SAMPLE_CLIENT.id } }))
+      case 'assistNewChat': return newChat()
+      case 'assistExpanded': return patch({ expanded: true, over: true })
+      case 'assistCollapsed': return patch({ expanded: false, over: false })
+      case 'datePicked': return setWs(s => ({ ...s, draft: { ...s.draft, date: nextSaturday() } }))
+      case 'tourBooked': return createTour(true)
       case 'assistOpen': return openSheet('assist')
       case 'assistAsked': return pickAction(CATCH_UP)
       case 'addOpen': return openInvite()
-      case 'invited': return addInvite({ id: `i${Date.now()}`, name: 'Dana Whitfield', email: 'dana.w@email.com', mobile: '' })
+      case 'invited': {
+        // Fill the form first so the agent sees what an invite takes, then send it.
+        if (inviteDemo) return
+        patch({ inviteOpen: true })
+        setInviteDemo(SAMPLE_INVITE)
+        window.setTimeout(() => {
+          addInvite({ id: `i${Date.now()}`, name: `${SAMPLE_INVITE.first} ${SAMPLE_INVITE.last}`, email: SAMPLE_INVITE.email, mobile: SAMPLE_INVITE.mobile, sample: true })
+          setInviteDemo(null)
+        }, 1400)
+        return
+      }
     }
   }
 
@@ -1873,6 +2077,8 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       ...ws, ...TOUR_RESET, ...first.enter,
       ...(id === 'assist' ? { assistMsgs: [] } : null),
       ...(id === 'sample' ? { chipsUsed: [] } : null),
+      // Replays start with no tours, as the New tour stop says.
+      ...(id === 'schedule' ? { tours: [] } : null),
     }
     setWs(next)
     setBase(baselineOf(next))
@@ -1881,28 +2087,36 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     setListGone(false)
     setActive({ id, i: 0 })
   }
+  const backedTo = useRef<string | null>(null)
+  // The sample invite is only there to show the Invited list; a real one stays.
+  const dropSampleInvites = useCallback(() => setWs(s => ({ ...s, invites: s.invites.filter(i => !i.sample) })), [])
   const goStop = useCallback((i: number) => {
     if (!active) return
     const t = TOUR_BY_ID[active.id]
     if (i >= t.stops.length) {
       setDone(d => ({ ...d, [active.id]: true }))
+      if (active.id === 'assist') patch({ sheet: null, expanded: false, over: false })
+      if (active.id === 'clients') dropSampleInvites()
       setActive(null)
       setListOpen(true)
       setListFocus(k => k + 1)
       return
     }
     const enter = t.stops[i].enter
-    if (enter) patch(enter)
+    if (i < active.i) patch({ ...viewFor(t.stops[i].target, ws), ...enter })
+    else if (enter) patch(enter)
+    // Arriving by Back on an action stop whose condition is already met must not auto-advance.
+    backedTo.current = i < active.i ? `${active.id}:${i}` : null
     setActive({ id: active.id, i })
-  }, [active, patch])
-  const endTour = useCallback(() => { setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [])
+  }, [active, patch, dropSampleInvites, ws])
+  const endTour = useCallback(() => { if (active?.id === 'assist') patch({ sheet: null, expanded: false, over: false }); if (active?.id === 'clients') dropSampleInvites(); setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [active, patch, dropSampleInvites])
   const openTours = () => { setActive(null); setListGone(false); setListOpen(true); setListFocus(k => k + 1) }
 
   const stop = active ? TOUR_BY_ID[active.id].stops[active.i] : null
   const met = stop?.until ? isMet(stop.until, ws, base) : false
   // Action stops advance on their own once the real action happens.
   useEffect(() => {
-    if (active && stop?.until && !stop.manual && met) goStop(active.i + 1)
+    if (active && stop?.until && !stop.manual && met && backedTo.current !== `${active.id}:${active.i}`) goStop(active.i + 1)
   }, [active, stop, met, goStop])
 
   // Subnav only exists for Clients and Tours (Search is a full-bleed map).
@@ -1911,7 +2125,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     SAMPLE_CLIENT,
     ...ws.invites.map(i => ({
       id: i.id, name: i.name, initials: initialsOf(i.name), budget: 'Not set', listings: 0,
-      lastSeen: i.email, status: 'Invited' as const,
+      lastSeen: i.email, status: 'Invited' as const, sample: i.sample,
     })),
   ]
   const assistOpen = ws.sheet === 'assist'
@@ -1920,7 +2134,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const toggleOver = () => patch({ over: !ws.over })
   // Expanding reveals the inline Threads dock; collapsing hides it again.
   const toggleExpand = () => patch({ expanded: !ws.expanded, over: !ws.expanded })
-  const newChat = () => patch({ assistMsgs: [], over: false })
+  const newChat = () => setWs(s => ({ ...s, assistMsgs: [], over: false, newChats: s.newChats + 1 }))
 
   const coachmark = active && !locked ? (
     <Coachmark
@@ -1943,7 +2157,10 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const mainMarginRight = `${dockedWidth}px`
   // The tour list sits left of the chat window when it's open, so neither covers the other.
   const listOffset = dockedWidth + (ws.chatOpen ? (ws.chatExpanded ? CHAT_W_EXPANDED : CHAT_W) + 16 : 0)
-  const title = ws.route === 'clients' ? SAMPLE_CLIENT.name : ws.route === 'search' ? 'Search' : 'Tours'
+  // The first tour in the tab is selected until the agent picks another.
+  const tabTours = toursFor(ws.tours, ws.tourTab)
+  const shownTour = tabTours.find(t => t.id === ws.tourId) ?? tabTours[0]
+  const title = ws.route === 'clients' ? SAMPLE_CLIENT.name : ws.route === 'search' ? 'Search' : shownTour?.client ?? 'Tours'
 
   return (
     <div className={css({ position: 'relative', display: 'flex', alignItems: 'stretch', bg: 'bg.base', overflow: 'hidden' })} style={{ minWidth: '1024px', height: '100vh' }}>
@@ -1952,7 +2169,8 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       {subnavVariant !== null && (
         <Subnav
           variant={subnavVariant} activeId={SAMPLE_CLIENT.id} shown={ws.subnavOpen} onClose={() => patch({ subnavOpen: false })}
-          tab={ws.clientTab} onTab={clientTab => patch({ clientTab })} clients={roster} tours={ws.tours} onInvite={openInvite}
+          tab={ws.clientTab} onTab={clientTab => patch({ clientTab })} clients={roster} tours={ws.tours} tourTab={ws.tourTab} onTourTab={tourTab => patch({ tourTab, tourId: null })}
+          tourId={shownTour?.id} onPickTour={tourId => patch({ tourId })} onInvite={openInvite}
         />
       )}
 
@@ -1960,6 +2178,10 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       <div className={vstack({ alignItems: 'stretch', gap: '0', flex: '1', minW: '0' })} style={{ marginRight: mainMarginRight, transition: `margin-right 220ms ${EASE}` }}>
         <MainHeader
           title={title}
+          lead={ws.route === 'search' ? <div className={css({ w: '[340px]', flexShrink: '0' })}><SearchField flush placeholder="City, neighborhood, address, school…" ariaLabel="Search homes" /></div> : undefined}
+          bare={ws.route === 'tours'}
+          secondary={ws.route === 'tours' ? <Button styleType="Secondary" size="sm" startIcon={<IconExport size={16} />}>Export</Button> : undefined}
+          below={ws.route === 'search' ? <SearchFilters /> : undefined}
           onAsk={() => openSheet('assist')}
           panelOpen={assistOpen}
           showSubnavButton={subnavVariant !== null && !ws.subnavOpen}
@@ -1968,7 +2190,11 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
           feed={ws.route === 'clients' ? (
             <FeedPopover open={ws.feedMenuOpen} onOpenChange={feedMenuOpen => patch({ feedMenuOpen })} onChat={openChat} />
           ) : undefined}
-          primary={ws.route === 'clients' ? (
+          primary={ws.route === 'search' ? (
+            <Button styleType="Primary" size="sm">Save search</Button>
+          ) : ws.route === 'tours' ? (
+            <Button styleType="Primary" size="sm" startIcon={<IconCalendar size={16} />}>Add to calendar</Button>
+          ) : ws.route === 'clients' ? (
             <span data-tour="activitytab" className={css({ display: 'flex' })}>
               <Button styleType="Primary" size="sm" startIcon={<IconHeart size={16} />} aria-pressed={ws.detailTab === 'activity'}
                 onClick={() => patch({ detailTab: ws.detailTab === 'activity' ? 'homes' : 'activity' })}>Client activity</Button>
@@ -1978,10 +2204,11 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
         <main className={css({ display: 'flex', flexDirection: 'column', flex: '1', minH: '0' })}>
           {ws.route === 'clients' && (
             <ClientsScreen detailTab={ws.detailTab} onDetailTab={detailTab => patch({ detailTab })}
-              onSchedule={openSchedule} onAddSearch={() => patch({ route: 'search' })} />
+              selected={ws.selected} onSelect={selectHome} onAddToTour={openTourModal} onClear={() => patch({ selected: [] })}
+              onAddSearch={() => patch({ route: 'search' })} />
           )}
-          {ws.route === 'search' && <ScreenPlaceholder label="Search map" />}
-          {ws.route === 'tours' && <ToursScreen tours={ws.tours} />}
+          {ws.route === 'search' && <TourMap count={4} label="Map of homes for sale" fill />}
+          {ws.route === 'tours' && <ToursScreen tour={shownTour} />}
         </main>
       </div>
 
@@ -2013,15 +2240,19 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
         onToggleExpand={() => patch({ chatExpanded: !ws.chatExpanded })} onClose={() => patch({ chatOpen: false, chatExpanded: false })}
         chat={ws.chat} chipsUsed={ws.chipsUsed} onChip={sendChip} onSend={sendChat} />
 
-      <ScheduleModal open={ws.scheduleOpen && !locked} draft={ws.draft} onToggleHome={toggleHome}
-        onSlot={slot => setWs(s => ({ ...s, draft: { ...s.draft, slot } }))} onBook={() => book()}
-        onClose={() => patch({ scheduleOpen: false })}>
-        {ws.scheduleOpen && modalCoachmark}
-      </ScheduleModal>
-      <InviteModal open={ws.inviteOpen && !locked} onInvite={addInvite} onClose={() => patch({ inviteOpen: false })}>
+      <TourModalView
+        mode={locked ? 'closed' : ws.tourModal} homes={ws.selected} tours={toursFor(ws.tours, 'Upcoming')} clients={roster} draft={ws.draft}
+        onNew={startNewTour} onBack={() => patch({ tourModal: 'choose' })}
+        onClient={clientId => setWs(s => ({ ...s, draft: { ...s.draft, clientId } }))}
+        onDate={date => setWs(s => ({ ...s, draft: { ...s.draft, date } }))}
+        onAddTo={addToTour} onCreate={() => createTour()}
+        onClose={() => patch({ tourModal: 'closed', draft: { clientId: null, date: null } })}>
+        {ws.tourModal !== 'closed' && modalCoachmark}
+      </TourModalView>
+      <InviteModal open={ws.inviteOpen && !locked} demo={inviteDemo} onInvite={addInvite} onClose={() => patch({ inviteOpen: false })}>
         {ws.inviteOpen && modalCoachmark}
       </InviteModal>
-      {!ws.scheduleOpen && !ws.inviteOpen && coachmark}
+      {ws.tourModal === 'closed' && !ws.inviteOpen && coachmark}
 
       <WelcomeDialog
         open={welcome && !locked} agent={AGENT_PROFILE}
