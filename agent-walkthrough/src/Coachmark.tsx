@@ -67,7 +67,6 @@ export function Coachmark({
 }) {
   const stop = tour.stops[index]
   const n = tour.stops.length
-  const prev = tour.stops[index - 1]
   const reduced = usePrefersReducedMotion()
   const popRef = useRef<HTMLDivElement>(null)
   const [m, setM] = useState<{ rect: Rect | null; popH: number; vw: number; vh: number }>(
@@ -94,6 +93,11 @@ export function Coachmark({
     return () => { window.clearInterval(t); window.removeEventListener('resize', measure) }
   }, [stop.target])
 
+  // Bring an off-screen target into view when the stop changes.
+  useEffect(() => {
+    document.querySelector(`[data-tour="${stop.target}"]`)?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
+  }, [stop.target, reduced])
+
   // Focus moves to the popover on every stop; Escape ends the tour.
   useEffect(() => { popRef.current?.focus({ preventScroll: true }) }, [tour.id, index])
   useEffect(() => {
@@ -103,8 +107,7 @@ export function Coachmark({
   }, [onEnd])
 
   const action = !!stop.until
-  const canBack = index > 0 && (!prev.until || !!prev.manual)
-  const showNext = !action || !!stop.manual
+  const showNext = !action || !!stop.manual || conditionMet
   const nextDisabled = !!stop.manual && !conditionMet
   const last = index === n - 1
   const pos = place(stop, m.rect, m.popH, m.vw, m.vh)
@@ -179,7 +182,7 @@ export function Coachmark({
         )}
 
         <div className={hstack({ gap: '200', pt: '100' })}>
-          {canBack && <Button styleType="Tertiary" size="sm" onClick={onBack}>Back</Button>}
+          {index > 0 && <Button styleType="Tertiary" size="sm" onClick={onBack}>Back</Button>}
           <div className={css({ flex: '1' })} />
           {action && <Button styleType="Ghost" size="sm" onClick={onShowMe}>Show me</Button>}
           {showNext && (
