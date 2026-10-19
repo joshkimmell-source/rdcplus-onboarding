@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { Avatar, Button, Modal, Tag } from '@rdc-npm/rdc-ui-v4'
 import { IconCheck, IconChevronDown, IconChevronUp } from '@rdc-npm/rdc-ui-v4/illustrations'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
 import { circle, hstack, vstack } from 'styled-system/patterns'
 import { type Tour, type TourId } from './tours'
 
@@ -17,7 +17,7 @@ export function WelcomeDialog({ open, agent, onExplore, onTour }: {
   open: boolean; agent: Agent; onExplore: () => void; onTour: () => void
 }) {
   return (
-    <Modal open={open} onClose={onExplore} width="min(480px, calc(100vw - 16px))">
+    <Modal open={open} onClose={onExplore} width="min(480px, calc(100vw - 16px))" data-wt-dark="">
       {/* HeaderCustom renders the dialog title element itself, so the text goes straight in. */}
       <Modal.HeaderCustom className={css({ px: '600', pt: '600', fontSize: '[24px]', lineHeight: '[30px]', fontWeight: 'bold', color: 'text.base' })}>
         Welcome to Realtor.com+, {agent.firstName}
@@ -141,7 +141,7 @@ export function TourList({
 
   if (!expanded) {
     return (
-      <div className={hstack({ position: 'fixed', zIndex: '[900]', gap: '200' })} style={posStyle}>
+      <div className={cx('wt-dark', hstack({ position: 'fixed', zIndex: '[900]', gap: '200' }))} style={posStyle}>
         <button
           type="button" onClick={onExpand} aria-label={`Getting started, ${doneCount} of ${total} tours done. Show tours`}
           className={`${pillBox} ${hstack({ gap: '300', h: '[48px]', pl: '[6px]', pr: '400', borderRadius: 'pill', cursor: 'pointer', fontFamily: 'inherit', color: 'text.base', _hover: { bg: 'bg.alternate' } })}`}
@@ -157,13 +157,13 @@ export function TourList({
   return (
     <div
       ref={cardRef} tabIndex={-1} role="region" aria-label="Getting started tours"
-      className={`${shell} ${css({ borderRadius: '[16px]', overflow: 'hidden', outline: 'none' })}`}
+      className={`wt-dark ${shell} ${css({ borderRadius: '[16px]', overflow: 'hidden', outline: 'none' })}`}
       style={mobile ? { left: 12, right: 12, bottom: 64 + 12, maxHeight: 'calc(100dvh - 104px)', overflowY: 'auto' } : { ...posStyle, width: 352 }}
     >
       <div className={hstack({ gap: '300', p: '400', alignItems: 'center' })}>
         <Ring done={doneCount} total={total} />
         <div className={vstack({ alignItems: 'flex-start', gap: '0', flex: '1', minW: '0' })}>
-          <p className={css({ fontSize: '[15px]', lineHeight: '[20px]', fontWeight: 'bold', color: 'text.base' })}>
+          <p className={css({ fontSize: '[1.2rem]', lineHeight: '[1.4]', fontWeight: 'normal', color: 'text.base' })}>
             {allDone ? 'You’ve seen the essentials' : 'Get to know Realtor.com+'}
           </p>
           <p className={css({ fontSize: '[13px]', lineHeight: '[18px]', color: 'text.alternate' })}>
@@ -179,7 +179,7 @@ export function TourList({
           const isNext = t.id === next?.id
           return (
             <li key={t.id} className={hstack({
-              gap: '300', minH: '[44px]', px: '400', py: '200',
+              gap: '300', minH: '[44px]', px: '400', py: '300',
               borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base',
               bg: isNext ? 'bg.alternate' : 'transparent',
             })}>

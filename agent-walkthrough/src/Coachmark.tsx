@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '@rdc-npm/rdc-ui-v4'
 import { IconClose, IconChevronRight } from '@rdc-npm/rdc-ui-v4/illustrations'
-import { css } from 'styled-system/css'
+import { css, cx } from 'styled-system/css'
 import { hstack, vstack } from 'styled-system/patterns'
 import type { Stop, Tour } from './tours'
 import { useIsMobile } from './viewport'
@@ -171,10 +171,11 @@ export function Coachmark({
         aria-labelledby={titleId}
         aria-describedby={`${titleId}-body`}
         tabIndex={-1}
-        className={vstack({
-          position: 'fixed', zIndex: '[1001]', alignItems: 'stretch', gap: '300',
-          bg: 'bg.base', borderRadius: '[12px]', boxShadow: 'dialog', p: '400', outline: 'none',
-        })}
+        className={cx('wt-dark', vstack({
+          position: 'fixed', zIndex: '[1001]', alignItems: 'stretch', gap: mobile ? '300' : '500',
+          bg: 'bg.base', borderRadius: '[12px]', boxShadow: 'dialog', p: mobile ? '400' : '500', outline: 'none',
+          borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base',
+        }))}
         style={{ width: mobile ? m.vw - 2 * M_SIDE : POP_W, top: pos.top, left: pos.left, transition: reduced ? 'none' : `top 300ms ${MOTION}, left 300ms ${MOTION}` }}
       >
         <div className={hstack({ gap: '200', justifyContent: 'space-between' })}>
@@ -190,9 +191,9 @@ export function Coachmark({
           ))}
         </div>
 
-        <div className={vstack({ alignItems: 'stretch', gap: '100' })}>
+        <div className={vstack({ alignItems: 'stretch', gap: mobile ? '100' : '200' })}>
           <h2 id={titleId} className={css({ fontSize: '[16px]', lineHeight: '[22px]', fontWeight: 'bold', color: 'text.base' })}>{stop.title}</h2>
-          <p id={`${titleId}-body`} className={css({ fontSize: '[14px]', lineHeight: '[20px]', color: 'text.alternate' })}>{stop.body}</p>
+          <p id={`${titleId}-body`} className={css({ fontSize: '[14px]', lineHeight: mobile ? '[20px]' : '[22px]', color: 'text.alternate' })}>{stop.body}</p>
         </div>
 
         {action && stop.hint && !conditionMet && (
@@ -202,7 +203,7 @@ export function Coachmark({
           </p>
         )}
 
-        <div className={hstack({ gap: '200', pt: '100' })}>
+        <div className={hstack({ gap: '200', pt: mobile ? '100' : '200' })}>
           {index > 0 && <Button styleType="Tertiary" size="sm" onClick={onBack}>Back</Button>}
           <div className={css({ flex: '1' })} />
           {action && <Button styleType="Ghost" size="sm" onClick={onShowMe}>Show me</Button>}

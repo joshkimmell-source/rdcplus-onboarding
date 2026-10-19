@@ -62,7 +62,7 @@ import {
   type ClientTab, type TourTab, type Condition, type DetailTab, type Route, type Sheet, type TourId,
 } from './tours'
 import { Coachmark } from './Coachmark'
-import { useIsMobile } from './viewport'
+import { useIsMobile, useIsNarrowDesktop, useViewportWidth } from './viewport'
 import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboarding'
 
 // ─── What this prototype is ───────────────────────────────────────────────────
@@ -119,7 +119,6 @@ const TILE_SCRIM_DARK =
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const RAIL_WIDTH = '64px'
 const SUBNAV_WIDTH = '320px'
-const PANEL_WIDTH = '420px'
 const PANEL_PX = 420
 
 // ─── Sample data ──────────────────────────────────────────────────────────────
@@ -524,11 +523,12 @@ function Initials({ initials, size = 40, fontSize = 13 }: { initials: string; si
 }
 
 // Section heading in the DISPLAY_FONT with the reference's tight tracking.
-function Heading({ as: Tag = 'h2', className, children }: { as?: React.ElementType; className?: string; children: React.ReactNode }) {
+// Desktop panel titles match the page header (24px); `compact` keeps the 16px title phones use.
+function Heading({ as: Tag = 'h2', className, compact, children }: { as?: React.ElementType; className?: string; compact?: boolean; children: React.ReactNode }) {
   return (
     <Tag
       className={cx(css({ m: '0', fontWeight: 'semibold', color: 'text.base' }), className)}
-      style={{ fontFamily: DISPLAY_FONT, fontSize: 16, lineHeight: '20px', letterSpacing: '-0.01em' }}
+      style={{ fontFamily: DISPLAY_FONT, ...(compact ? { fontSize: 16, lineHeight: '20px', letterSpacing: '-0.01em' } : { fontSize: 24, lineHeight: '28px', letterSpacing: '-0.02em' }) }}
     >
       {children}
     </Tag>
@@ -783,7 +783,7 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
       >
         {/* Header */}
         <div className={css({ display: 'flex', alignItems: 'center', gap: '200', pt: '[18px]', pr: '400', pb: '400', pl: '[20px]' })}>
-          <Heading className={css({ flex: '[1 1 auto]' })}>{title}</Heading>
+          <Heading compact={mobile} className={css({ flex: '[1 1 auto]' })}>{title}</Heading>
           <Menu label="Sort and manage" hoverTone="border" items={[
             { label: 'Sort by name' }, { label: 'Sort by recent activity' },
             { separator: true }, { label: 'Manage clients' },
@@ -1772,12 +1772,12 @@ function ThreadRow({ t }: { t: Thread }) {
 // The Threads list — rendered twice by the panel: as an inline dock (✕ header, when
 // expanded) and as a sliding overlay (back-arrow header, when docked-narrow). Search
 // is intentionally not rendered (Edit/Delete/Search are visual-only in the scaffold).
-function ThreadsList({ threads, onClose, onNewChat, back = false }: { threads: Thread[]; onClose: () => void; onNewChat: () => void; back?: boolean }) {
+function ThreadsList({ threads, onClose, onNewChat, back = false, compact = false }: { threads: Thread[]; onClose: () => void; onNewChat: () => void; back?: boolean; compact?: boolean }) {
   return (
     <div className={vstack({ alignItems: 'stretch', gap: '0', h: '100%', minW: '0' })}>
       <div className={css({ display: 'flex', alignItems: 'center', gap: '400', pt: '[16px]', pr: '[16px]', pb: '400', pl: '[20px]', flexShrink: '0' })}>
         {back && <CircleButton label="Back" hoverTone="border" onClick={onClose}><IconArrowLeft size={2} /></CircleButton>}
-        <Heading className={css({ flex: '[1 1 auto]' })}>Threads</Heading>
+        <Heading compact={compact} className={css({ flex: '[1 1 auto]' })}>Threads</Heading>
         {!back && <CircleButton label="Close threads" hoverTone="border" onClick={onClose}><IconClose size={12} /></CircleButton>}
       </div>
       <div className={cx('ra-scroll', css({ flex: '[1 1 auto]', overflowY: 'auto', mx: '400', mb: '[16px]', display: 'flex', flexDirection: 'column', gap: '[2px]' }))}>
@@ -1802,26 +1802,30 @@ function ThreadsList({ threads, onClose, onNewChat, back = false }: { threads: T
 // Inside, the Threads history renders two ways:
 // an inline dock (when expanded) and a sliding overlay (when docked-narrow).
 function AssistantPanel({
-  msgs, input, onInput, onSend, onPick, open, expanded, over, onToggleOver, onToggleExpand, onNewChat, onClose, mobile,
+  msgs, input, onInput, onSend, onPick, open, expanded, over, onToggleOver, onToggleExpand, onNewChat, onClose, mobile, panelPx = PANEL_PX, full,
 }: {
   msgs: Msg[]; input: string; onInput: (v: string) => void; onSend: () => void; onPick: (a: AssistAction) => void
   open: boolean; expanded: boolean; over: boolean
   onToggleOver: () => void; onToggleExpand: () => void; onNewChat: () => void; onClose: () => void
   // Phones: full screen, with Threads sliding over it and no expand control.
   mobile?: boolean
+  // Desktop: the panel's width (it narrows with the window), and `full` once the window is too
+  // narrow to share the screen, when it fills everything right of the rail instead.
+  panelPx?: number; full?: boolean
 }) {
-  const width = !open ? '0px' : mobile ? '100%' : expanded ? 'calc(100% - 64px)' : PANEL_WIDTH
-  const dockW = !mobile && over && expanded ? 300 : 0
-  const overX = over && (mobile || !expanded) ? 0 : 112
+  const flat = mobile || full
+  const width = !open ? '0px' : mobile ? '100%' : full || expanded ? 'calc(100% - 64px)' : `${panelPx}px`
+  const dockW = !flat && over && expanded ? 300 : 0
+  const overX = over && (flat || !expanded) ? 0 : 112
   const home = msgs.length === 0
-  const dockedInHeader = !mobile && expanded && over
+  const dockedInHeader = !flat && expanded && over
 
   return (
     <aside
       aria-label="RealAssist AI"
       data-tour="assistpanel"
       aria-hidden={!open}
-      className={css({ position: 'absolute', top: '0', right: '0', bottom: '0', zIndex: mobile ? '[40]' : '[20]', bg: 'bg.alternate', borderLeftWidth: '100', borderLeftStyle: 'solid', borderColor: 'gray.200', overflow: 'clip', display: 'flex' })}
+      className={css({ position: 'absolute', top: '0', right: '0', bottom: '0', zIndex: flat ? '[40]' : '[20]', bg: 'bg.alternate', borderLeftWidth: '100', borderLeftStyle: 'solid', borderColor: 'gray.200', overflow: 'clip', display: 'flex' })}
       style={{ width, visibility: open ? 'visible' : 'hidden', transition: `width 220ms ${EASE}` }}
     >
       {/* Inline dock — revealed left of the panel when expanded */}
@@ -1829,7 +1833,7 @@ function AssistantPanel({
         className={css({ flexShrink: '0', overflow: 'hidden', borderRightWidth: '100', borderRightStyle: 'solid', borderColor: 'border.base' })}
         style={{ width: dockW, background: '#F8F8F7', transition: `width 220ms ${EASE}` }}
         aria-hidden={!dockedInHeader}
-        data-tour={mobile ? undefined : 'threads'}
+        data-tour={flat ? undefined : 'threads'}
       >
         <div style={{ width: 300, height: '100%' }}>
           <ThreadsList threads={THREADS} onClose={onToggleOver} onNewChat={onNewChat} />
@@ -1849,7 +1853,7 @@ function AssistantPanel({
           {!dockedInHeader && (
             <span data-tour="newchat" className={css({ display: 'flex' })}><CircleButton label="New conversation" onClick={onNewChat}><IconCompose size={16} /></CircleButton></span>
           )}
-          {!mobile && <span data-tour="expandpanel" className={css({ display: 'flex' })}>
+          {!flat && <span data-tour="expandpanel" className={css({ display: 'flex' })}>
             <CircleButton label={expanded ? 'Collapse panel' : 'Expand panel'} onClick={onToggleExpand}>
               {expanded ? <IconCollapsePanel size={14} /> : <IconExpandPanel size={14} />}
             </CircleButton>
@@ -1872,11 +1876,11 @@ function AssistantPanel({
 
         {/* Sliding overlay — the Threads history over the panel when docked-narrow */}
         <div
-          data-tour={mobile ? 'threads' : undefined}
+          data-tour={flat ? 'threads' : undefined}
           className={css({ position: 'absolute', top: '0', right: '0', bottom: '0', left: '0', bg: 'bg.alternate' })}
           style={{ transform: `translateX(${overX}%)`, transition: `transform 220ms ${EASE}`, boxShadow: '-4px 0 16px rgba(26,24,22,0.12)' }}
         >
-          <ThreadsList threads={THREADS} onClose={onToggleOver} onNewChat={onNewChat} back />
+          <ThreadsList threads={THREADS} onClose={onToggleOver} onNewChat={onNewChat} back compact={mobile} />
         </div>
       </div>
     </aside>
@@ -2453,6 +2457,11 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const mobile = useIsMobile()
   const TB = mobile ? MOBILE_TOUR_BY_ID : TOUR_BY_ID
   const [ws, setWs] = useState<Workspace>(INITIAL_WS)
+  const narrow = useIsNarrowDesktop()
+  const vw = useViewportWidth()
+  // The RealAssist panel narrows from 420px at 1024px to 320px at 924px, then fills the screen.
+  const panelPx = Math.max(320, Math.min(PANEL_PX, vw - 604))
+  const fullPanel = !mobile && vw <= 924
   const [inviteDemo, setInviteDemo] = useState<typeof EMPTY_INVITE | null>(null)
   const patch = useCallback((p: Partial<Workspace>) => setWs(s => ({ ...s, ...p })), [])
   const [input, setInput] = useState('')
@@ -2626,6 +2635,17 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     if (active && stop?.until && !stop.manual && met && backedTo.current !== `${active.id}:${active.i}`) goStop(active.i + 1)
   }, [active, stop, met, goStop])
 
+  // On a narrow desktop the subnav and the RealAssist panel can't share the screen: opening one
+  // collapses the other. If both are open when the window narrows, the subnav gives way.
+  const lastPanes = useRef({ sheet: ws.sheet, subnav: ws.subnavOpen })
+  useEffect(() => {
+    const was = lastPanes.current
+    lastPanes.current = { sheet: ws.sheet, subnav: ws.subnavOpen }
+    if (!narrow || !ws.sheet || !ws.subnavOpen) return
+    if (!was.subnav) patch({ sheet: null, expanded: false, over: false })
+    else patch({ subnavOpen: false })
+  }, [narrow, ws.sheet, ws.subnavOpen, patch])
+
   // Subnav only exists for Clients and Tours (Search is a full-bleed map).
   const subnavVariant = ws.route === 'clients' ? 'clients' : ws.route === 'tours' ? 'tours' : null
   const roster: Client[] = [
@@ -2660,7 +2680,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 
   // The docked panels are absolutely positioned (they leave the flow); when one is open
   // and not expanded, the main column reserves its width so content isn't hidden under it.
-  const dockedWidth = sideOpen && !(assistOpen && ws.expanded) ? PANEL_PX : 0
+  const dockedWidth = sideOpen && !(assistOpen && ws.expanded) && !fullPanel ? panelPx : 0
   const mainMarginRight = `${dockedWidth}px`
   // The tour list sits left of the chat window when it's open, so neither covers the other.
   const listOffset = dockedWidth + (ws.chatOpen ? (ws.chatExpanded ? CHAT_W_EXPANDED : CHAT_W) + 16 : 0)
@@ -2671,7 +2691,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const title = ws.route === 'clients' ? SAMPLE_CLIENT.name : ws.route === 'search' ? 'Search' : shownTour?.client ?? 'Tours'
 
   return (
-    <div className={css({ position: 'relative', display: 'flex', alignItems: 'stretch', bg: 'bg.base', overflow: 'hidden' })} style={{ minWidth: mobile ? 0 : '1024px', height: mobile ? '100dvh' : '100vh' }}>
+    <div className={css({ position: 'relative', display: 'flex', alignItems: 'stretch', bg: 'bg.base', overflow: 'hidden' })} style={{ minWidth: 0, height: mobile ? '100dvh' : '100vh' }}>
       {mobile ? (
       <div className={css({ position: 'relative', display: 'flex', flexDirection: 'column', flex: '1', minW: '0', h: '100%' })}>
         <main className={css({ flex: '1', minH: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' })}>
@@ -2806,6 +2826,8 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
         onNewChat={newChat}
         onClose={closeSheet}
         mobile={mobile}
+        panelPx={panelPx}
+        full={fullPanel}
       />
 
       {!welcome && !listGone && !(mobile && (active || ws.sheet || ws.chatOpen)) && (
@@ -2819,7 +2841,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
         />
       )}
       {listNote && (
-        <p role="status" className={css({ position: 'fixed', zIndex: '[900]', m: '0', display: 'flex', alignItems: 'center', gap: '200', pl: '400', pr: '200', py: '200', bg: 'bg.inverse', color: 'text.inverse', borderRadius: '300', boxShadow: 'float' })}
+        <p role="status" className={cx('wt-dark', css({ position: 'fixed', zIndex: '[900]', m: '0', display: 'flex', alignItems: 'center', gap: '200', pl: '400', pr: '200', py: '200', bg: 'bg.alternate', color: 'text.base', borderRadius: '300', boxShadow: 'float', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base' }))}
           style={mobile ? { left: 12, right: 12, bottom: 64 + 12, fontSize: 13 } : { right: 24, bottom: 24, maxWidth: 360, fontSize: 13 }}>
           <span className={css({ flex: '1' })}>{listNote}</span>
           <CircleButton label="Close message" size={28} color="#FFFFFF" onClick={() => setListNote('')}><IconClose size={12} /></CircleButton>
