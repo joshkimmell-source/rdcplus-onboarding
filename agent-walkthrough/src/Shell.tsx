@@ -63,8 +63,8 @@ import {
 } from './tours'
 import { Coachmark } from './Coachmark'
 import { useIsMobile, useIsNarrowDesktop, useViewportWidth } from './viewport'
-import { track, trackOnce, setLayout, setTourHash } from './telemetry'
-import { AGENT } from './agent'
+import { track, trackOnce, setLayout, setTourHash, flush } from './telemetry'
+import { AGENT, welcomeSeen, markWelcomeSeen, forgetWelcomeSeen } from './agent'
 import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboarding'
 
 // ─── What this prototype is ───────────────────────────────────────────────────
@@ -359,6 +359,38 @@ const INITIAL_WS: Workspace = {
   subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, tourModal: 'closed', inviteOpen: false,
   chat: [CHAT_OPENER], chipsUsed: [], selected: [], tourTab: 'Upcoming', tourId: null, newChats: 0, clientView: 'list', tourView: 'list', tourPane: 'map', routeShown: false, optimized: 0, calendarAdds: 0, mapsMenuOpen: false, draft: { clientId: null, date: null }, tours: SEED_TOURS, invites: [], assistMsgs: [],
 }
+// ─── Keeping the session across reloads ───────────────────────────────────────
+// A reload in the same tab keeps the agent's progress: tours done, the Getting started list,
+// and what they did in the workspace (tours booked, invites, chat, RealAssist™ conversations).
+// Transient UI (open dialogs and panels, a tour in progress) starts fresh. The browser doesn't
+// tell a page whether a reload was "hard", so every reload keeps progress; Account → Start over
+// (or closing the tab) clears it.
+const STATE_KEY = 'rdcplus-onboarding:state'
+const KEPT: (keyof Workspace)[] = [
+  'route', 'clientTab', 'detailTab', 'clientView', 'tourView', 'tourTab', 'tourId', 'selected',
+  'tours', 'invites', 'chat', 'chipsUsed', 'assistMsgs', 'newChats', 'optimized', 'calendarAdds',
+]
+type SavedState = { ws: Partial<Workspace>; done: Partial<Record<TourId, boolean>>; listGone: boolean }
+function loadState(): SavedState | null {
+  try {
+    const raw = sessionStorage.getItem(STATE_KEY)
+    if (!raw) return null
+    const saved = JSON.parse(raw) as SavedState
+    // A sample invite only exists while its tour runs.
+    if (saved.ws.invites) saved.ws.invites = saved.ws.invites.filter(i => !i.sample)
+    return saved
+  } catch {
+    return null
+  }
+}
+function saveState(ws: Workspace, done: SavedState['done'], listGone: boolean) {
+  try {
+    const kept: Partial<Workspace> = {}
+    for (const k of KEPT) (kept as Record<string, unknown>)[k] = ws[k]
+    sessionStorage.setItem(STATE_KEY, JSON.stringify({ ws: kept, done, listGone } satisfies SavedState))
+  } catch { /* storage full or blocked: the session just won't survive a reload */ }
+}
+
 // The known state every tour starts from.
 const TOUR_RESET: Partial<Workspace> = {
   route: 'clients', sheet: null, detailTab: 'homes', clientTab: 'Active',
@@ -651,7 +683,7 @@ function RailCell({
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     gap: '[5px]', w: '100%', flexShrink: '0', bg: 'transparent', border: 'none', fontFamily: 'inherit',
   } as const
-  if (plain) {
+  if (plain && !onClick) {
     return <div title={title} className={cx('group', css({ ...base, color: 'text.alternate', cursor: 'default' }))}>{content}</div>
   }
   return (
@@ -698,9 +730,10 @@ function NavRail({ active, onNavigate, onSupport, onChat }: {
       <RailCell icon={<IconBell size={20} />} label="Alerts" />
       <RailCell icon={<IconChat size={20} />} label="Chat" onClick={onChat} />
 
-      {/* Account — inert in the scaffold */}
+      {/* Account — opens "Start over" (see Shell) */}
       <RailCell
         plain
+        onClick={openAccount}
         title={`${AGENT.name} · ${AGENT.brokerage}`}
         label="Account"
         icon={<Initials initials={AGENT.initials} size={30} fontSize={12} />}
@@ -708,6 +741,8 @@ function NavRail({ active, onNavigate, onSupport, onChat }: {
     </nav>
   )
 }
+
+const openAccount = () => window.dispatchEvent(new Event('wt:account'))
 
 // ─── Subnav (Clients / Tours) ─────────────────────────────────────────────────
 
@@ -2219,9 +2254,10 @@ function BottomNav({ route, chatOpen, onNavigate, onChat, onSupport }: {
 // The agent's initials, far right in each phone header (the Account entry; inert here).
 function MobileAccount() {
   return (
-    <span className={css({ display: 'flex', flexShrink: '0' })} title={`${AGENT.name} · ${AGENT.brokerage}`}>
+    <button type="button" onClick={openAccount} aria-label={`Account: ${AGENT.name}. Start over`} title={`${AGENT.name} · ${AGENT.brokerage}`}
+      className={css({ display: 'flex', flexShrink: '0', p: '0', border: 'none', bg: 'transparent', cursor: 'pointer', borderRadius: 'circle' })}>
       <Initials initials={AGENT.initials} size={32} fontSize={12} />
-    </span>
+    </button>
   )
 }
 
@@ -2455,7 +2491,8 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 }) {
   const mobile = useIsMobile()
   const TB = mobile ? MOBILE_TOUR_BY_ID : TOUR_BY_ID
-  const [ws, setWs] = useState<Workspace>(INITIAL_WS)
+  const [saved] = useState(loadState)
+  const [ws, setWs] = useState<Workspace>(() => ({ ...INITIAL_WS, ...saved?.ws }))
   const narrow = useIsNarrowDesktop()
   const vw = useViewportWidth()
   // The RealAssist panel narrows from 420px at 1024px to 320px at 924px, then fills the screen.
@@ -2466,10 +2503,10 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const [input, setInput] = useState('')
 
   // ── Onboarding state ──
-  const [welcome, setWelcome] = useState(true)
+  const [welcome, setWelcome] = useState(() => !welcomeSeen())
   const [listOpen, setListOpen] = useState(false)
-  const [listGone, setListGone] = useState(false)
-  const [done, setDone] = useState<Partial<Record<TourId, boolean>>>({})
+  const [listGone, setListGone] = useState(saved?.listGone ?? false)
+  const [done, setDone] = useState<Partial<Record<TourId, boolean>>>(saved?.done ?? {})
   const [active, setActive] = useState<Active>(null)
   const [base, setBase] = useState<Baseline>(() => baselineOf(INITIAL_WS))
   const [listFocus, setListFocus] = useState(0)
@@ -2484,6 +2521,24 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   }
   const hideList = (note: string) => { setListGone(true); setListOpen(false); flash(note) }
 
+  useEffect(() => { if (!welcome) markWelcomeSeen() }, [welcome])
+  useEffect(() => { saveState(ws, done, listGone) }, [ws, done, listGone])
+
+  // Account → Start over: clear the saved session and reload to the welcome screen.
+  const [confirmReset, setConfirmReset] = useState(false)
+  useEffect(() => {
+    const open = () => setConfirmReset(true)
+    window.addEventListener('wt:account', open)
+    return () => window.removeEventListener('wt:account', open)
+  }, [])
+  const startOver = () => {
+    track('start_over')
+    flush(true)
+    try { sessionStorage.removeItem(STATE_KEY) } catch { /* ignore */ }
+    forgetWelcomeSeen()
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    window.location.reload()
+  }
   useEffect(() => { savePrefs({ toursDone: done, listDismissed: listGone, welcomeSeen: !welcome }) }, [done, listGone, welcome])
 
   // ── Workspace actions ──
@@ -2609,6 +2664,20 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     }, st.until ? 20000 : 45000)
     return () => window.clearTimeout(flag)
   }, [active?.id, active?.i]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A reload (or closing the tab) mid-tour: record where they were, since no tour_abandon will follow.
+  const liveRef = useRef({ active, info: stepInfo })
+  liveRef.current = { active, info: stepInfo }
+  useEffect(() => {
+    const onHide = () => {
+      const { active: a, info } = liveRef.current
+      if (!a) return
+      track('tour_interrupted', { ...info(a.id, a.i), totalMs: Date.now() - run.current.startedAt })
+      flush(true)
+    }
+    window.addEventListener('pagehide', onHide)
+    return () => window.removeEventListener('pagehide', onHide)
+  }, [])
 
   // ── Tour engine ──
   function startTour(id: TourId, source: 'list' | 'welcome' = 'list') {
@@ -2917,6 +2986,19 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       </InviteModal>
       {ws.tourModal === 'closed' && !ws.inviteOpen && coachmark}
 
+      <Modal open={confirmReset && !locked} onClose={() => setConfirmReset(false)} width="min(440px, calc(100vw - 16px))" data-wt-dark="">
+        <Modal.Header title="Start over?" />
+        <Modal.Body>
+          <p className={css({ textStyle: 'bodyMd', color: 'text.alternate', py: '400' })}>
+            This clears your progress and everything you did in the prototype, and takes you back to the welcome screen. Your first name stays.
+          </p>
+        </Modal.Body>
+        <Modal.Footer>
+          <div className={css({ flex: '1' })} />
+          <Button styleType="Tertiary" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
+          <Button styleType="Primary" size="sm" onClick={startOver}>Start over</Button>
+        </Modal.Footer>
+      </Modal>
       <WelcomeDialog
         open={welcome && !locked} agent={agentProfile()}
         onExplore={() => { track('welcome_choice', { choice: 'explore' }); setWelcome(false); setListOpen(true) }}
