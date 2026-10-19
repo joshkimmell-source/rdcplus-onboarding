@@ -1,2 +1,30 @@
 @import './globals.css';
 @import './panda.css';
+
+/* Walkthrough elements (coachmarks, the tour list, the welcome dialog) render dark so they
+   read as a layer on top of the light app. Re-pointing the semantic tokens is enough: Haven
+   components and our own styles both read them. `data-wt-dark` is for the Modal, which
+   portals out of the tree and takes attributes but not a safe className. */
+.wt-dark,
+[data-wt-dark] {
+  color-scheme: dark;
+  --colors-text-base: #FFFFFF;
+  --colors-text-alternate: #BEB8B0;
+  --colors-text-inverse: #1A1816;
+  --colors-text-disabled: #958A7F;
+  --colors-bg-base: #1F1D1A;
+  --colors-bg-alternate: #2C2925;
+  --colors-bg-inverse: #FFFFFF;
+  --colors-bg-inverse-alternate: #E9E7E4;
+  --colors-bg-disabled: #3F3B36;
+  --colors-border-base: #3F3B36;
+  --colors-border-alternate: #544D47;
+  --colors-border-highlight: #958A7F;
+  --colors-border-bold: #FFFFFF;
+  --colors-border-inverse: #1F1D1A;
+  --colors-gray-100: #2C2925;
+  --colors-gray-200: #3F3B36;
+  --colors-gray-300: #544D47;
+  --colors-status-success: #1DD355;
+  color: var(--colors-text-base);
+}
