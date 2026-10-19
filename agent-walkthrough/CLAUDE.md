@@ -15,6 +15,15 @@ checklist, the agent learns in the real workspace through coachmark tours.
 - `src/Onboarding.tsx`: welcome dialog and the floating tour list / pill
 - `src/Shell.tsx`: the full `client-rdc-plus` shell (NavRail, Subnav, MainHeader + ActionBar, Clients screen with tiles / pills / `PropertyCard` feed, docked RealAssist™ AI panel with launcher, transcript, and threads) plus the tour state machine
 
+## Phones (under 768px)
+
+`useIsMobile` (`src/viewport.ts`) switches `Shell` to a one-pane-at-a-time layout: bottom nav (`data-tour="rail"`),
+icon-only Ask RealAssist™ AI button fixed bottom right, and the Clients / Tours subnav, RealAssist™ AI panel, Threads, and
+Chat as full-screen panes. `clientView` / `tourView` in the workspace say which pane is showing.
+Tours use `MOBILE_TOURS` (`tours.ts`): same content, with `desktopOnly` stops dropped (expand / collapse the panel) and per-stop `m`
+overrides for target, place, and copy. `mobileViewFor` in `Shell.tsx` puts the right pane on screen for each stop. The coachmark
+becomes a full-width card below, above, or (`place: 'sheet'`) pinned to the bottom of the screen.
+
 ## Shell extensions
 
 Kept the shell's structure and primitives; added only what the tours point at:

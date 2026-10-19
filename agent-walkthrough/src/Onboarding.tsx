@@ -3,7 +3,7 @@ import { Avatar, Button, Modal, Tag } from '@rdc-npm/rdc-ui-v4'
 import { IconCheck, IconChevronDown, IconChevronUp } from '@rdc-npm/rdc-ui-v4/illustrations'
 import { css } from 'styled-system/css'
 import { circle, hstack, vstack } from 'styled-system/patterns'
-import { TOURS, type TourId } from './tours'
+import { type Tour, type TourId } from './tours'
 
 // ─── Welcome dialog ───────────────────────────────────────────────────────────
 // Shown once on first run. The agent signed in through their MLS, so everything
@@ -17,7 +17,7 @@ export function WelcomeDialog({ open, agent, onExplore, onTour }: {
   open: boolean; agent: Agent; onExplore: () => void; onTour: () => void
 }) {
   return (
-    <Modal open={open} onClose={onExplore} width="480px">
+    <Modal open={open} onClose={onExplore} width="min(480px, calc(100vw - 16px))">
       {/* HeaderCustom renders the dialog title element itself, so the text goes straight in. */}
       <Modal.HeaderCustom className={css({ px: '600', pt: '600', fontSize: '[24px]', lineHeight: '[30px]', fontWeight: 'bold', color: 'text.base' })}>
         Welcome to Realtor.com+, {agent.firstName}
@@ -104,8 +104,13 @@ function StatusCircle({ n, done, next }: { n: number; done: boolean; next: boole
 export type ListCorner = 'bottom-right' | 'bottom-left'
 
 export function TourList({
-  expanded, done, corner, sheetWidth, focusKey, onStart, onMinimize, onExpand, onDismiss,
+  tours: TOURS, mobile, lift = 0, expanded, done, corner, sheetWidth, focusKey, onStart, onMinimize, onExpand, onDismiss,
 }: {
+  tours: Tour[]
+  // Phones: extra room above the bottom nav for screens with their own floating controls.
+  lift?: number
+  // Phones: pinned above the bottom nav, full width when open.
+  mobile?: boolean
   expanded: boolean; done: Partial<Record<TourId, boolean>>; corner: ListCorner
   // Width of the open right-docked panel (0 when none), so the list never covers it.
   sheetWidth: number
@@ -123,9 +128,12 @@ export function TourList({
 
   // 24px inset; on the right it shifts left of an open docked panel so it never covers it.
   // On the left it sits just right of the 64px rail.
-  const posStyle: React.CSSProperties = corner === 'bottom-left'
+  const posStyle: React.CSSProperties = mobile
+    ? { left: 12, bottom: 64 + 12 + lift }
+    : corner === 'bottom-left'
     ? { left: 64 + 24, bottom: 24 }
     : { right: sheetWidth + 24, bottom: 24 }
+  const pillBox = css({ bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', boxShadow: 'float' })
   const shell = css({
     position: 'fixed', zIndex: '[900]', bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base',
     boxShadow: 'float', transition: '[right 220ms cubic-bezier(0.2,0.8,0.2,1)]',
@@ -133,15 +141,16 @@ export function TourList({
 
   if (!expanded) {
     return (
-      <button
-        type="button" onClick={onExpand} aria-label={`Getting started, ${doneCount} of ${total} tours done. Show tours`}
-        className={`${shell} ${hstack({ gap: '300', h: '[48px]', pl: '[6px]', pr: '400', borderRadius: 'pill', cursor: 'pointer', fontFamily: 'inherit', color: 'text.base', _hover: { bg: 'bg.alternate' } })}`}
-        style={posStyle}
-      >
-        <Ring done={doneCount} total={total} />
-        <span className={css({ fontSize: '[14px]', fontWeight: 'semibold' })}>Getting started</span>
-        <IconChevronUp size={2} />
-      </button>
+      <div className={hstack({ position: 'fixed', zIndex: '[900]', gap: '200' })} style={posStyle}>
+        <button
+          type="button" onClick={onExpand} aria-label={`Getting started, ${doneCount} of ${total} tours done. Show tours`}
+          className={`${pillBox} ${hstack({ gap: '300', h: '[48px]', pl: '[6px]', pr: '400', borderRadius: 'pill', cursor: 'pointer', fontFamily: 'inherit', color: 'text.base', _hover: { bg: 'bg.alternate' } })}`}
+        >
+          <Ring done={doneCount} total={total} />
+          <span className={css({ fontSize: '[14px]', fontWeight: 'semibold' })}>Getting started</span>
+          <IconChevronUp size={2} />
+        </button>
+      </div>
     )
   }
 
@@ -149,7 +158,7 @@ export function TourList({
     <div
       ref={cardRef} tabIndex={-1} role="region" aria-label="Getting started tours"
       className={`${shell} ${css({ borderRadius: '[16px]', overflow: 'hidden', outline: 'none' })}`}
-      style={{ ...posStyle, width: 352 }}
+      style={mobile ? { left: 12, right: 12, bottom: 64 + 12, maxHeight: 'calc(100dvh - 104px)', overflowY: 'auto' } : { ...posStyle, width: 352 }}
     >
       <div className={hstack({ gap: '300', p: '400', alignItems: 'center' })}>
         <Ring done={doneCount} total={total} />
@@ -194,8 +203,14 @@ export function TourList({
 
       {allDone && (
         <div className={hstack({ gap: '300', px: '400', py: '300', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })}>
-          <p className={css({ flex: '1', fontSize: '[13px]', lineHeight: '[18px]', color: 'text.alternate' })}>Replay any tour from Support in the left rail.</p>
+          <p className={css({ flex: '1', fontSize: '[13px]', lineHeight: '[18px]', color: 'text.alternate' })}>Replay any tour from {mobile ? 'Support in the bottom bar' : 'Support in the left rail'}.</p>
           <Button styleType="Primary" size="sm" onClick={onDismiss}>Dismiss</Button>
+        </div>
+      )}
+      {!allDone && (
+        <div className={hstack({ justifyContent: 'flex-end', px: '400', py: '200', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })}>
+          <button type="button" onClick={onDismiss}
+            className={css({ textStyle: 'bodySm', border: 'none', bg: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'text.alternate', textDecoration: 'underline', _hover: { color: 'text.base' } })}>Dismiss</button>
         </div>
       )}
     </div>

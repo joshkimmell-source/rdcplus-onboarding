@@ -4,6 +4,7 @@ import { IconClose, IconChevronRight } from '@rdc-npm/rdc-ui-v4/illustrations'
 import { css } from 'styled-system/css'
 import { hstack, vstack } from 'styled-system/patterns'
 import type { Stop, Tour } from './tours'
+import { useIsMobile } from './viewport'
 
 // ─── Coachmark engine ─────────────────────────────────────────────────────────
 // A spotlight cut-out around the stop's target plus a 320px popover beside it.
@@ -59,6 +60,23 @@ function place(stop: Stop, r: Rect | null, h: number, vw: number, vh: number) {
   }
 }
 
+// Phones: a full-width card below the target if it fits, else above it, else pinned to the
+// edge away from the target (a very tall target is covered rather than the controls).
+const M_SIDE = 12
+function placeMobile(stop: Stop, r: Rect | null, h: number, vw: number, vh: number) {
+  const left = M_SIDE
+  if (stop.place === 'sheet') return { top: Math.round(vh - h - M_SIDE), left }
+  if (stop.place === 'sheet-top') return { top: 72, left }
+  if (!r) return { top: Math.max(MARGIN, Math.round(vh / 2 - h / 2)), left }
+  const below = r.top + r.height + PAD + GAP
+  const above = r.top - PAD - GAP - h
+  let top: number
+  if (below + h <= vh - M_SIDE) top = below
+  else if (above >= M_SIDE) top = above
+  else top = r.top + r.height / 2 > vh / 2 ? M_SIDE : vh - h - M_SIDE
+  return { top: Math.round(top), left }
+}
+
 export function Coachmark({
   tour, index, dim, conditionMet, onNext, onBack, onShowMe, onEnd,
 }: {
@@ -68,6 +86,7 @@ export function Coachmark({
   const stop = tour.stops[index]
   const n = tour.stops.length
   const reduced = usePrefersReducedMotion()
+  const mobile = useIsMobile()
   const popRef = useRef<HTMLDivElement>(null)
   const [m, setM] = useState<{ rect: Rect | null; popH: number; vw: number; vh: number }>(
     { rect: null, popH: 220, vw: window.innerWidth, vh: window.innerHeight },
@@ -95,7 +114,9 @@ export function Coachmark({
 
   // Bring an off-screen target into view when the stop changes.
   useEffect(() => {
-    document.querySelector(`[data-tour="${stop.target}"]`)?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
+    const el = document.querySelector(`[data-tour="${stop.target}"]`)
+    // A target taller than the screen is shown from its top, not its bottom.
+    el?.scrollIntoView({ block: el.getBoundingClientRect().height > window.innerHeight ? 'start' : 'nearest', behavior: reduced ? 'auto' : 'smooth' })
   }, [stop.target, reduced])
 
   // Focus moves to the popover on every stop; Escape ends the tour.
@@ -110,7 +131,7 @@ export function Coachmark({
   const showNext = !action || !!stop.manual || conditionMet
   const nextDisabled = !!stop.manual && !conditionMet
   const last = index === n - 1
-  const pos = place(stop, m.rect, m.popH, m.vw, m.vh)
+  const pos = mobile ? placeMobile(stop, m.rect, m.popH, m.vw, m.vh) : place(stop, m.rect, m.popH, m.vw, m.vh)
   const transition = reduced ? 'none' : `top 300ms ${MOTION}, left 300ms ${MOTION}, width 300ms ${MOTION}, height 300ms ${MOTION}`
 
   let spot: Rect | null = null
@@ -154,7 +175,7 @@ export function Coachmark({
           position: 'fixed', zIndex: '[1001]', alignItems: 'stretch', gap: '300',
           bg: 'bg.base', borderRadius: '[12px]', boxShadow: 'dialog', p: '400', outline: 'none',
         })}
-        style={{ width: POP_W, top: pos.top, left: pos.left, transition: reduced ? 'none' : `top 300ms ${MOTION}, left 300ms ${MOTION}` }}
+        style={{ width: mobile ? m.vw - 2 * M_SIDE : POP_W, top: pos.top, left: pos.left, transition: reduced ? 'none' : `top 300ms ${MOTION}, left 300ms ${MOTION}` }}
       >
         <div className={hstack({ gap: '200', justifyContent: 'space-between' })}>
           <p className={css({ fontSize: '[12px]', lineHeight: '[16px]', color: 'text.alternate' })}>

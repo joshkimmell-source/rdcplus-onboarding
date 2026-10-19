@@ -35,6 +35,8 @@ import {
   IconHome,
   IconShare,
   IconExport,
+  IconClientActivity,
+  IconDrag,
   IconTrash,
   IconArrowDown,
   IconRealAssist,
@@ -56,10 +58,11 @@ import {
 import { css, cva, cx } from 'styled-system/css'
 import { grid, hstack, vstack, wrap } from 'styled-system/patterns'
 import {
-  TOURS, TOUR_BY_ID,
+  TOURS, TOUR_BY_ID, MOBILE_TOURS, MOBILE_TOUR_BY_ID,
   type ClientTab, type TourTab, type Condition, type DetailTab, type Route, type Sheet, type TourId,
 } from './tours'
 import { Coachmark } from './Coachmark'
+import { useIsMobile } from './viewport'
 import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboarding'
 
 // ─── What this prototype is ───────────────────────────────────────────────────
@@ -263,14 +266,6 @@ const LISTING_GROUPS: { label: string; ids: string[] }[] = [
 const listingById = (id: string) => LISTINGS.find(l => l.id === id)!
 const fmtPrice = (n: number) => `$${n.toLocaleString('en-US')}`
 
-// Client activity, per the support article: views, saves, hidden homes, searches.
-const ACTIVITY: { Icon: React.ElementType; text: string; when: string }[] = [
-  { Icon: IconHome, text: 'Viewed 1428 Maple Heights Dr 3 times', when: '2 hrs ago' },
-  { Icon: IconHeart, text: 'Saved 902 Orchard Ct', when: 'Yesterday' },
-  { Icon: IconTrash, text: 'Hid 77 Birchwood Ln', when: 'Yesterday' },
-  { Icon: IconSearch, text: 'Changed saved search to 3+ beds', when: '2 days ago' },
-  { Icon: IconUserPlus, text: 'Accepted your invite', when: '3 days ago' },
-]
 
 // Tour dates read like "Sat, Oct 17".
 const fmtTourDate = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -296,7 +291,7 @@ const CHIPS: Chip[] = [
 type AssistAction = { id: string; title: string; desc: string; Icon: React.ElementType; prompt: string; reply: string }
 const ASSIST_ACTIONS: AssistAction[] = [
   { id: 'add',    title: 'Invite client',       Icon: IconUserPlus,      desc: 'Guide agent through client onboarding with members, search, and notes', prompt: 'Help me add a new client.', reply: 'Clients join Realtor.com+ by invite. Choose Invite client above your client list, add their name and email, and I’ll help set up their search once they accept.' },
-  { id: 'catch',  title: 'View priorities',    Icon: IconCatchUp,       desc: 'Daily briefing that analyzes unread messages, notifications, and recent activity to suggest prioritized actions', prompt: 'Catch me up on my clients.', reply: 'Here’s your catch-up. Alex viewed 1428 Maple Heights Dr three times since yesterday and saved 902 Orchard Ct, which has an open house Saturday. Want to suggest a tour of both?' },
+  { id: 'catch',  title: 'View priorities',    Icon: IconCatchUp,       desc: 'Daily briefing that analyzes unread messages, notifications, and recent activity to suggest prioritized actions', prompt: 'Catch me up on my clients.', reply: 'Here’s your daily briefing. Alex viewed 1428 Maple Heights Dr three times since yesterday and saved 902 Orchard Ct, which has an open house Saturday. Want to suggest a tour of both?' },
   { id: 'pulse',  title: 'Check Client Pulse', Icon: IconChart,         desc: 'Analyze a client to get deeper insights, engagement patterns, member activity, and actionable suggestions', prompt: 'Show me Alex’s pulse.', reply: 'Alex is highly engaged: 23 home views this week, mostly 3–4 bed homes under $630K in Maple Heights. Weekday evenings are the best time to reach out.' },
   { id: 'search', title: 'Optimize Search',     Icon: IconSearchSpark,   desc: 'Analyze client behavior to detect preferences and recommend search refinements', prompt: 'Optimize Alex’s search.', reply: 'Alex keeps saving homes with big yards and skips anything over $640K. Want me to tighten the saved search to $550K–$640K with a yard?' },
   { id: 'tour',   title: 'Coordinate Tour',     Icon: IconCalendarClock, desc: 'Coordinate showings with timeline, instructions, and outreach messages', prompt: 'Help me plan a tour for Alex.', reply: 'I can plan a Saturday route for 1428 Maple Heights Dr and 902 Orchard Ct, about 12 minutes apart, and draft a confirmation text for Alex.' },
@@ -354,18 +349,22 @@ type Workspace = {
   selected: string[]
   tourTab: TourTab; tourId: string | null
   newChats: number
+  // Phones show one pane at a time: the client list or a client's feed, the tour list or a tour.
+  clientView: 'list' | 'feed'; tourView: 'list' | 'detail'
+  // The open tour on a phone: map or list, whether the route is drawn, and how many times it was optimized.
+  tourPane: 'map' | 'list'; routeShown: boolean; optimized: number; calendarAdds: number; mapsMenuOpen: boolean
   draft: { clientId: string | null; date: Date | null }
   tours: BookedTour[]; invites: Invite[]; assistMsgs: Msg[]
 }
 const INITIAL_WS: Workspace = {
   route: 'clients', sheet: null, detailTab: 'homes', clientTab: 'Active',
   subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, tourModal: 'closed', inviteOpen: false,
-  chat: [CHAT_OPENER], chipsUsed: [], selected: [], tourTab: 'Upcoming', tourId: null, newChats: 0, draft: { clientId: null, date: null }, tours: SEED_TOURS, invites: [], assistMsgs: [],
+  chat: [CHAT_OPENER], chipsUsed: [], selected: [], tourTab: 'Upcoming', tourId: null, newChats: 0, clientView: 'list', tourView: 'list', tourPane: 'map', routeShown: false, optimized: 0, calendarAdds: 0, mapsMenuOpen: false, draft: { clientId: null, date: null }, tours: SEED_TOURS, invites: [], assistMsgs: [],
 }
 // The known state every tour starts from.
 const TOUR_RESET: Partial<Workspace> = {
   route: 'clients', sheet: null, detailTab: 'homes', clientTab: 'Active',
-  subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, tourModal: 'closed', inviteOpen: false, selected: [], tourTab: 'Upcoming', tourId: null, draft: { clientId: null, date: null },
+  subnavOpen: true, expanded: false, over: false, feedMenuOpen: false, chatOpen: false, chatExpanded: false, tourModal: 'closed', inviteOpen: false, selected: [], tourTab: 'Upcoming', tourId: null, clientView: 'list', tourView: 'list', tourPane: 'map', routeShown: false, mapsMenuOpen: false, draft: { clientId: null, date: null },
 }
 
 // The view a stop's target lives in. Going Back restores it, since the agent may have
@@ -386,6 +385,8 @@ function viewFor(target: string, ws: Workspace): Partial<Workspace> {
     case 'pickdate': case 'createbtn':
       return { route: 'clients', inviteOpen: false, selected: homes, tourModal: 'new', draft: { clientId: SAMPLE_CLIENT.id, date: ws.draft.date ?? nextSaturday() } }
     case 'tourslist': return { route: 'tours', subnavOpen: true, tourModal: 'closed' }
+    case 'tourdetail': case 'tourlayout': case 'tourlist': case 'tourroute': case 'touroptimize': case 'tourcalendar': case 'tourmaps':
+      return { route: 'tours', subnavOpen: true, tourModal: 'closed', ...(target === 'tourroute' ? { routeShown: false } : null) }
     case 'assistpanel': case 'assistreply': case 'newchat': case 'expandpanel': case 'threads': case 'closepanel':
       return { ...clients, sheet: 'assist' }
     case 'addclient': return { ...clients, clientTab: 'Active', subnavOpen: true }
@@ -394,9 +395,26 @@ function viewFor(target: string, ws: Workspace): Partial<Workspace> {
   }
 }
 
-type Baseline = { newChats: number; chat: number; tours: number; assist: number; invites: number }
+// Where each target lives on a phone, which shows one pane at a time. Applied on every
+// stop, forward and back, so the target is always on screen.
+function mobileViewFor(target: string): Partial<Workspace> {
+  switch (target) {
+    case 'rail': return { route: 'clients', clientView: 'list', sheet: null, chatOpen: false, tourModal: 'closed', inviteOpen: false }
+    case 'clientlist': case 'addclient': return { route: 'clients', clientView: 'list', sheet: null }
+    case 'clienthead': case 'feedtiles': case 'feedbody': case 'thisweek': case 'activitytab': case 'feedtitle': case 'feedchat': case 'addtotour':
+      return { route: 'clients', clientView: 'feed', sheet: null }
+    case 'askra': return { sheet: null }
+    case 'threadsbtn': return { sheet: 'assist', over: false }
+    case 'tourslist': case 'tourrow': return { route: 'tours', tourView: 'list' }
+    case 'tourswitch': case 'tourroute': case 'touroptimize': case 'tourcalendar': case 'tourmaps': return { route: 'tours', tourView: 'detail', tourPane: 'map', sheet: null }
+    case 'tourlist': return { route: 'tours', tourView: 'detail', tourPane: 'list', sheet: null }
+    default: return {}
+  }
+}
+
+type Baseline = { calendarAdds: number; optimized: number; newChats: number; chat: number; tours: number; assist: number; invites: number }
 const agentMsgs = (ws: Workspace) => ws.chat.filter(m => m.from === 'agent').length
-const baselineOf = (ws: Workspace): Baseline => ({ newChats: ws.newChats, chat: agentMsgs(ws), tours: ws.tours.length, assist: ws.assistMsgs.length, invites: ws.invites.length })
+const baselineOf = (ws: Workspace): Baseline => ({ calendarAdds: ws.calendarAdds, optimized: ws.optimized, newChats: ws.newChats, chat: agentMsgs(ws), tours: ws.tours.length, assist: ws.assistMsgs.length, invites: ws.invites.length })
 
 // Conditions mean "something new happened during this tour", against the baseline.
 function isMet(c: Condition, ws: Workspace, b: Baseline) {
@@ -411,6 +429,13 @@ function isMet(c: Condition, ws: Workspace, b: Baseline) {
     case 'datePicked': return !!ws.draft.date
     case 'tourBooked': return ws.tours.length > b.tours
     case 'assistOpen': return ws.sheet === 'assist'
+    case 'tourOpened': return ws.route === 'tours' && ws.tourView === 'detail'
+    case 'tourListShown': return ws.tourPane === 'list'
+    case 'routeShown': return ws.routeShown
+    case 'tourOptimized': return ws.optimized > b.optimized
+    case 'calendarAdded': return ws.calendarAdds > b.calendarAdds
+    case 'threadsOpen': return ws.over
+    case 'mapsMenuOpen': return ws.mapsMenuOpen
     case 'assistNewChat': return ws.newChats > b.newChats
     case 'assistExpanded': return ws.expanded
     case 'assistCollapsed': return !ws.expanded
@@ -728,10 +753,12 @@ function SubnavTab({ label, active, onClick, tourId }: { label: string; active: 
   )
 }
 
-function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours, tourTab, onTourTab, tourId, onPickTour, onInvite }: {
+function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours, tourTab, onTourTab, tourId, onPickTour, onInvite, mobile, onPickClient }: {
   variant: 'clients' | 'tours'; activeId?: string; shown: boolean; onClose: () => void
   tab: ClientTab; onTab: (t: ClientTab) => void; clients: Client[]; tours: BookedTour[]
   tourTab: TourTab; onTourTab: (t: TourTab) => void; tourId?: string; onPickTour: (id: string) => void; onInvite: () => void
+  // Phones: the subnav is the whole screen, and a client row opens that client's feed.
+  mobile?: boolean; onPickClient?: (id: string) => void
 }) {
   const title = variant === 'clients' ? 'Clients' : 'Tours'
   const rows = variant === 'clients' ? clients.filter(c => c.status === tab) : []
@@ -742,7 +769,7 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
   return (
     <div
       className={css({ flexShrink: '0', overflow: 'hidden' })}
-      style={{ width: shown ? SUBNAV_WIDTH : '0px', transition: `width 220ms ${EASE}` }}
+      style={mobile ? { flex: '1', minHeight: 0 } : { width: shown ? SUBNAV_WIDTH : '0px', transition: `width 220ms ${EASE}` }}
       aria-hidden={!shown}
       data-tour={variant === 'clients' ? 'clientlist' : 'tourslist'}
     >
@@ -752,7 +779,7 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
           borderRightWidth: '100', borderRightStyle: 'solid', borderColor: 'gray.200',
           overflowY: 'auto',
         })}
-        style={{ width: SUBNAV_WIDTH }}
+        style={{ width: mobile ? '100%' : SUBNAV_WIDTH }}
       >
         {/* Header */}
         <div className={css({ display: 'flex', alignItems: 'center', gap: '200', pt: '[18px]', pr: '400', pb: '400', pl: '[20px]' })}>
@@ -766,7 +793,14 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
               <CircleButton label="Invite client" hoverTone="border" onClick={onInvite}><IconUserAddToProfile size={2} /></CircleButton>
             </span>
           )}
-          <CircleButton label="Hide panel" hoverTone="border" onClick={onClose}><IconPanelClose size={16} /></CircleButton>
+          {mobile && variant === 'clients' && (
+            <span className={css({ position: 'relative', display: 'flex' })}>
+              <CircleButton label="Notifications" hoverTone="border"><IconBell size={18} /></CircleButton>
+              <span aria-hidden className={css({ position: 'absolute', top: '0', right: '0', minW: '[16px]', h: '[16px]', px: '[4px]', borderRadius: 'pill', bg: '[#B41C21]', color: 'text.inverse', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' })} style={{ fontSize: 10 }}>3</span>
+            </span>
+          )}
+          {!mobile && <CircleButton label="Hide panel" hoverTone="border" onClick={onClose}><IconPanelClose size={16} /></CircleButton>}
+          {mobile && <MobileAccount />}
         </div>
 
         {variant === 'clients' ? (
@@ -801,7 +835,8 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
                 return (
                   <div
                     key={c.id}
-                    className={hstack({ gap: '300', alignItems: 'center', p: '300', borderRadius: '300', bg: selected ? 'gray.200' : 'transparent', _hover: { bg: 'gray.200' } })}
+                    onClick={onPickClient && c.status === 'Active' ? e => { if (!(e.target as HTMLElement).closest('button')) onPickClient(c.id) } : undefined}
+                    className={hstack({ gap: '300', alignItems: 'center', p: '300', borderRadius: '300', bg: selected && !mobile ? 'gray.200' : 'transparent', cursor: onPickClient ? 'pointer' : 'default', _hover: { bg: 'gray.200' } })}
                   >
                     <AvatarWithStatus name={c.name} initials={c.initials} online={c.online} />
                     <div className={css({ flex: '[1 1 auto]', minW: '0' })}>
@@ -835,9 +870,9 @@ function Subnav({ variant, activeId, shown, onClose, tab, onTab, clients, tours,
               ))}
             </div>
             <div className={vstack({ alignItems: 'stretch', gap: '[2px]', mx: '300' })}>
-              {toursFor(tours, tourTab).map(t => (
+              {toursFor(tours, tourTab).map((t, ti) => (
                 <button
-                  key={t.id} type="button" onClick={() => onPickTour(t.id)} aria-current={t.id === tourId ? 'true' : undefined}
+                  key={t.id} data-tour={ti === 0 ? 'tourrow' : undefined} type="button" onClick={() => onPickTour(t.id)} aria-current={t.id === tourId ? 'true' : undefined}
                   className={hstack({ gap: '300', alignItems: 'center', p: '300', borderRadius: '300', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', bg: t.id === tourId ? 'gray.200' : 'transparent', _hover: { bg: 'gray.200' } })}
                 >
                   <AvatarWithStatus name={t.client} initials={initialsOf(t.client)} online={false} />
@@ -956,10 +991,10 @@ const FOLD_ITEMS: { label: string; icon: React.ReactNode }[] = [
 // `primary` is the screen's own dark action (Client activity on a client feed). It sits
 // left of the Ask pill and never folds.
 // `bare` drops the Agent notifications / Hotsheets / Market data / Favorites cluster (Search has its own).
-function ActionBar({ onAsk, panelOpen, primary, bare, secondary }: { onAsk: () => void; panelOpen: boolean; primary?: React.ReactNode; bare?: boolean; secondary?: React.ReactNode }) {
+function ActionBar({ onAsk, panelOpen, primary, bare, secondary, items = FOLD_ITEMS, moreItems }: { onAsk: () => void; panelOpen: boolean; primary?: React.ReactNode; bare?: boolean; secondary?: React.ReactNode; items?: typeof FOLD_ITEMS; moreItems?: MenuItem[] }) {
   const rowRef = useRef<HTMLDivElement>(null)
   // Number of collapsible pills (counted from the right — Favorites first) showing a label.
-  const [labeled, setLabeled] = useState(FOLD_ITEMS.length)
+  const [labeled, setLabeled] = useState(items.length)
   // Bumped on every reset so the layout effect re-measures even when `labeled` is already
   // at its max (otherwise a row that narrows while fully labeled never sheds).
   const [measure, setMeasure] = useState(0)
@@ -977,7 +1012,7 @@ function ActionBar({ onAsk, panelOpen, primary, bare, secondary }: { onAsk: () =
   // fonts load, then let the layout effect above re-shed to the right level (this also
   // handles *un*folding as space grows).
   useEffect(() => {
-    const reset = () => { setLabeled(FOLD_ITEMS.length); setMeasure(m => m + 1) }
+    const reset = () => { setLabeled(items.length); setMeasure(m => m + 1) }
     reset()
     document.fonts?.ready.then(reset)
     const row = rowRef.current
@@ -987,14 +1022,16 @@ function ActionBar({ onAsk, panelOpen, primary, bare, secondary }: { onAsk: () =
     return () => ro.disconnect()
   }, [panelOpen])
 
-  const foldThreshold = FOLD_ITEMS.length - labeled // indices below this collapse to icons
+  const foldThreshold = items.length - labeled // indices below this collapse to icons
   return (
-    <div ref={rowRef} className={css({ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '300', flex: '[1 1 0]', minW: '0', overflow: 'hidden' })}>
-      <Menu secondary label="More actions" items={[
+    <div ref={rowRef} className={css({ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '300', flex: bare ? '[0 0 auto]' : '[1 1 0]', ml: bare ? 'auto' : '0', minW: '0', overflow: 'hidden' })}>
+      <span data-tour="tourmore" className={css({ display: 'flex', flexShrink: '0' })}>
+        <Menu secondary label="More actions" items={moreItems ?? [
         { label: 'Export list' }, { label: 'Print' },
         { separator: true }, { label: 'View settings' },
       ]} />
-      {!bare && FOLD_ITEMS.map((it, i) => {
+      </span>
+      {!bare && items.map((it, i) => {
         const collapsed = i < foldThreshold
         // Wrapped so the flex row can't shrink the button below its natural width — the
         // fold measurement above sums each child's offsetWidth, which relies on that.
@@ -1076,13 +1113,13 @@ function FeedPopover({ open, onOpenChange, onChat }: {
 }
 
 function MainHeader({
-  title, onAsk, panelOpen, showSubnavButton, subnavLabel, onOpenSubnav, feed, primary, secondary, lead, below, bare,
+  title, onAsk, panelOpen, showSubnavButton, subnavLabel, onOpenSubnav, feed, primary, secondary, lead, below, bare, items, moreItems,
 }: {
   title: string; onAsk: () => void; panelOpen: boolean
   showSubnavButton?: boolean; subnavLabel?: string; onOpenSubnav?: () => void
   // On Clients the title is the client feed, which opens the feed popover.
   feed?: React.ReactNode
-  primary?: React.ReactNode; secondary?: React.ReactNode; bare?: boolean
+  primary?: React.ReactNode; secondary?: React.ReactNode; bare?: boolean; items?: typeof FOLD_ITEMS; moreItems?: MenuItem[]
   // Search: a search field in place of the title, a filter row under the header, and no action cluster.
   lead?: React.ReactNode; below?: React.ReactNode
 }) {
@@ -1101,7 +1138,7 @@ function MainHeader({
           style={{ fontFamily: DISPLAY_FONT, fontSize: 24, lineHeight: '28px', letterSpacing: '-0.02em' }}
         >{title}</h1>}
       </div>}
-      <ActionBar onAsk={onAsk} panelOpen={panelOpen} primary={primary} secondary={secondary} bare={bare || !!lead} />
+      <ActionBar onAsk={onAsk} panelOpen={panelOpen} primary={primary} secondary={secondary} bare={bare || !!lead} items={items} moreItems={moreItems} />
     </div>
     {below}
     </header>
@@ -1111,28 +1148,30 @@ function MainHeader({
 // ─── Clients screen (built out) ───────────────────────────────────────────────
 
 // A 124px photo tile with a scrim and an overlaid count / label.
-function CountTile({ src, count, label }: { src: string; count: number; label: string }) {
+function CountTile({ src, count, label, compact }: { src: string; count: number; label: string; compact?: boolean }) {
+  const px = compact ? 88 : 124
   return (
-    <div className={css({ position: 'relative', w: '124px', h: '124px', flexShrink: '0', borderRadius: '300', overflow: 'hidden', boxShadow: 'raised', bg: 'bg.alternate' })}>
+    <div style={{ width: px, height: px }} className={css({ position: 'relative', flexShrink: '0', borderRadius: '300', overflow: 'hidden', boxShadow: 'raised', bg: 'bg.alternate' })}>
       <img src={src} alt="" loading="lazy" className={css({ position: 'absolute', inset: '0', w: '100%', h: '100%', objectFit: 'cover' })} />
       <div className={css({ position: 'absolute', inset: '0', pointerEvents: 'none' })} style={{ background: TILE_SCRIM }} />
-      <div className={css({ position: 'absolute', left: '14px', bottom: '12px', color: 'white', pointerEvents: 'none' })}>
-        <div className={css({ fontSize: '22px', fontWeight: 'bold', lineHeight: '26px' })}>{count}</div>
-        <div className={css({ fontSize: '13px', fontWeight: 'semibold' })}>{label}</div>
+      <div className={css({ position: 'absolute', left: compact ? '10px' : '14px', bottom: compact ? '8px' : '12px', color: 'white', pointerEvents: 'none' })}>
+        <div className={css({ fontWeight: 'bold' })} style={{ fontSize: compact ? 17 : 22, lineHeight: compact ? '20px' : '26px' }}>{count}</div>
+        <div className={css({ fontWeight: 'semibold' })} style={{ fontSize: compact ? 11 : 13 }}>{label}</div>
       </div>
     </div>
   )
 }
 
 // The dark "Saved Searches" tile — two lines of copy over a deeper scrim.
-function SavedSearchTile({ src, name, sub }: { src: string; name: string; sub: string }) {
+function SavedSearchTile({ src, name, sub, compact }: { src: string; name: string; sub: string; compact?: boolean }) {
+  const px = compact ? 88 : 124
   return (
-    <div className={css({ position: 'relative', w: '124px', h: '124px', flexShrink: '0', borderRadius: '300', overflow: 'hidden', boxShadow: 'raised', bg: 'bg.inverse' })}>
+    <div style={{ width: px, height: px }} className={css({ position: 'relative', flexShrink: '0', borderRadius: '300', overflow: 'hidden', boxShadow: 'raised', bg: 'bg.inverse' })}>
       <img src={src} alt="" loading="lazy" className={css({ position: 'absolute', inset: '0', w: '100%', h: '100%', objectFit: 'cover' })} />
       <div className={css({ position: 'absolute', inset: '0', pointerEvents: 'none' })} style={{ background: TILE_SCRIM_DARK }} />
-      <div className={css({ position: 'absolute', left: '14px', right: '14px', bottom: '12px', color: 'white', pointerEvents: 'none' })}>
-        <div className={css({ fontSize: '14px', fontWeight: 'bold', lineHeight: '1.3' })}>{name}</div>
-        <div className={css({ fontSize: '12px', fontWeight: 'medium', opacity: '0.85', mt: '100' })}>{sub}</div>
+      <div className={css({ position: 'absolute', left: compact ? '8px' : '14px', right: compact ? '8px' : '14px', bottom: compact ? '8px' : '12px', color: 'white', pointerEvents: 'none' })}>
+        <div className={css({ fontWeight: 'bold', lineHeight: '1.3' })} style={{ fontSize: compact ? 11 : 14 }}>{name}</div>
+        <div className={css({ fontWeight: 'medium', opacity: '0.85', mt: '100' })} style={{ fontSize: compact ? 9 : 12 }}>{sub}</div>
       </div>
     </div>
   )
@@ -1215,6 +1254,90 @@ function ListingCard({ listing, selected, onSelect }: { listing: Listing; select
   )
 }
 
+// Client activity, per the support article: views, saves, hidden homes, searches.
+// Client activity (prototype extension), per the support article: views, saves, hidden homes,
+// searches. A dated timeline on the left, the client's numbers and settings on the right.
+const ACTIVITY: { Icon?: React.ElementType; day: number; text: string; when: string; body?: string }[] = [
+  { day: 0, text: 'viewed 1428 Maple Heights Dr 3 times', when: '2 hrs ago' },
+  { day: 1, text: 'saved 902 Orchard Ct', when: 'Yesterday' },
+  { day: 1, text: 'hid 77 Birchwood Ln', when: 'Yesterday' },
+  { day: 2, text: 'changed the saved search to 3+ beds', when: '2 days ago' },
+  { day: 3, text: 'joined you on Realtor.com+!', when: '3 days ago', body: 'Engage your client by sharing listings!' },
+]
+const dayLabel = (back: number) => {
+  if (back === 0) return 'TODAY'
+  if (back === 1) return 'YESTERDAY'
+  const d = new Date(); d.setDate(d.getDate() - back)
+  return `${d.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase()} ${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`
+}
+
+function ClientActivityScreen({ mobile }: { mobile?: boolean }) {
+  const card = vstack({ alignItems: 'stretch', gap: '300', p: '400', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: '300', bg: 'bg.base' })
+  const label = css({ m: '0', color: 'text.base', textTransform: 'uppercase' })
+  const body = css({ m: '0', color: 'text.base' })
+  const strong = (n: React.ReactNode) => <strong>{n}</strong>
+  const mostViewed = [{ id: 'l1', views: 3 }, { id: 'l3', views: 2 }]
+  return (
+    <div
+      data-tour="clienthead"
+      className={css({ display: 'grid', gap: '600', alignItems: 'start', px: mobile ? '400' : '600', pt: '300', pb: '600', overflowY: 'auto', flex: '1', minH: '0' })}
+      style={{ gridTemplateColumns: mobile ? '1fr' : 'minmax(0, 1fr) 360px' }}
+    >
+      <section aria-label="Client activity" className={vstack({ alignItems: 'stretch', gap: '500' })}>
+        {[0, 1, 2, 3].map(day => {
+          const rows = ACTIVITY.filter(a => a.day === day)
+          return (
+            <div key={day} className={vstack({ alignItems: 'stretch', gap: '300' })}>
+              <h3 className={css({ m: '0', pb: '200', borderBottomWidth: '100', borderBottomStyle: 'solid', borderColor: 'border.base', color: 'text.base', fontWeight: 'normal' })} style={{ fontSize: 12 }}>{dayLabel(day)}</h3>
+              {rows.length === 0 && <p className={css({ m: '0', color: 'text.alternate' })} style={{ fontSize: 13 }}>{day === 0 ? 'No activity yet' : 'No activity'}</p>}
+              {rows.map((a, i) => (
+                <div key={i} className={hstack({ gap: '300', alignItems: 'flex-start' })}>
+                  <Initials initials={SAMPLE_CLIENT.initials} size={40} />
+                  <div className={vstack({ alignItems: 'flex-start', gap: '[2px]', minW: '0' })}>
+                    <p className={body} style={{ fontSize: 16, lineHeight: '22px' }}><strong>{ALEX_FIRST}</strong> {a.text}</p>
+                    <p className={css({ m: '0', color: 'text.alternate' })} style={{ fontSize: 13 }}>{a.when}</p>
+                    {a.body && <p className={cx(body, css({ pt: '200' }))} style={{ fontSize: 18, lineHeight: '24px' }}>{a.body}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </section>
+
+      <aside aria-label="About this client" className={vstack({ alignItems: 'stretch', gap: '400' })}>
+        <section className={card}>
+          <h3 className={label} style={{ fontSize: 13, fontWeight: 400 }}>Statistics</h3>
+          <p className={body} style={{ fontSize: 14, lineHeight: '24px' }}>
+            Joined {strong('3 days')} ago, {strong(7)} property views, {strong(CLIENT_FEED.savedCount)} saved, {strong(CLIENT_FEED.tourRequestCount)} tour request, {strong(0)} tours
+          </p>
+        </section>
+        <section className={card}>
+          <h3 className={label} style={{ fontSize: 13, fontWeight: 400 }}>Client settings</h3>
+          <p className={css({ m: '0', color: 'text.alternate' })} style={{ fontSize: 14 }}>Clients are in charge of their own notifications.</p>
+          <p className={cx(body, css({ pt: '200' }))} style={{ fontSize: 14, fontWeight: 700 }}>{SAMPLE_CLIENT.name}</p>
+          <p className={body} style={{ fontSize: 14, lineHeight: '22px' }}>Email alerts <strong>ON | Real time</strong><br />Push notifications <strong>ON | Daily</strong></p>
+        </section>
+        <section className={card}>
+          <h3 className={label} style={{ fontSize: 13, fontWeight: 400 }}>Most viewed properties</h3>
+          {mostViewed.map(m => {
+            const l = listingById(m.id)
+            return (
+              <div key={m.id} className={hstack({ gap: '300', alignItems: 'center' })}>
+                <img src={l.photo} alt="" className={css({ w: '[56px]', h: '[42px]', borderRadius: '200', objectFit: 'cover', flexShrink: '0' })} />
+                <div className={css({ minW: '0' })}>
+                  <p className={css({ m: '0', color: 'text.base', fontWeight: 'semibold' })} style={{ fontSize: 14 }}>{l.address1}</p>
+                  <p className={css({ m: '0', color: 'text.alternate' })} style={{ fontSize: 13 }}>{m.views} views · {fmtPrice(l.price)}</p>
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      </aside>
+    </div>
+  )
+}
+
 // Client header (prototype extension): sample tag and a one-line summary. Client
 // activity is the dark action in the main header, as in the product; Chat lives in the
 // Feed Members popover on the header title and in the rail. Tours are built from the
@@ -1231,12 +1354,16 @@ function ClientHeader() {
 }
 
 // Sticks to the bottom of the feed once a home is ticked. Add to tour opens the tour dialog.
-function BulkBar({ count, onAddToTour, onClear }: { count: number; onAddToTour: () => void; onClear: () => void }) {
+// On phones the bar floats at the top of the feed, clear of the Ask RealAssist™ AI button.
+function BulkBar({ count, onAddToTour, onClear, top }: { count: number; onAddToTour: () => void; onClear: () => void; top?: boolean }) {
   return (
     <div
       data-tour="addtotour" role="region" aria-label="Actions for selected homes"
       className={hstack({
-        position: 'sticky', bottom: '400', alignSelf: 'center', mt: 'auto', gap: '300', px: '500', py: '300',
+        ...(top
+          ? { position: 'absolute', top: '300', left: '300', right: '300', justifyContent: 'space-between' }
+          : { position: 'sticky', bottom: '400', alignSelf: 'center', mt: 'auto' }),
+        gap: '300', px: '500', py: '300',
         bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: 'pill', boxShadow: 'float', zIndex: '[5]',
       })}
     >
@@ -1250,12 +1377,12 @@ function BulkBar({ count, onAddToTour, onClear }: { count: number; onAddToTour: 
 }
 
 // The "+ Add" tile after the saved searches: starts a new saved search in Search.
-function AddSearchTile({ onClick }: { onClick: () => void }) {
+function AddSearchTile({ onClick, compact }: { onClick: () => void; compact?: boolean }) {
   return (
     <button
       type="button" onClick={onClick} aria-label="Add a saved search"
-      className={vstack({ justifyContent: 'center', gap: '200', w: '124px', h: '124px', flexShrink: '0', borderRadius: '300', border: 'none', bg: 'bg.alternate', color: 'text.base', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'semibold', _hover: { bg: 'gray.200' } })}
-      style={{ fontSize: 14 }}
+      className={vstack({ justifyContent: 'center', gap: '200', flexShrink: '0', borderRadius: '300', border: 'none', bg: 'bg.alternate', color: 'text.base', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'semibold', _hover: { bg: 'gray.200' } })}
+      style={{ fontSize: compact ? 12 : 14, width: compact ? 88 : 124, height: compact ? 88 : 124 }}
     >
       <IconPlus size={16} />
       Add
@@ -1263,7 +1390,8 @@ function AddSearchTile({ onClick }: { onClick: () => void }) {
   )
 }
 
-function ClientsScreen({ detailTab, onDetailTab, selected, onSelect, onAddToTour, onClear, onAddSearch }: {
+function ClientsScreen({ detailTab, onDetailTab, selected, onSelect, onAddToTour, onClear, onAddSearch, mobile }: {
+  mobile?: boolean
   detailTab: DetailTab; onDetailTab: (t: DetailTab) => void
   selected: string[]; onSelect: (id: string, next: boolean) => void; onAddToTour: () => void; onClear: () => void
   onAddSearch: () => void
@@ -1271,52 +1399,41 @@ function ClientsScreen({ detailTab, onDetailTab, selected, onSelect, onAddToTour
   const [pill, setPill] = useState(PILLS[0])
   const [view, setView] = useState<ClientsView>('grid')
   const activity = detailTab === 'activity'
+  if (activity) return <ClientActivityScreen mobile={mobile} />
 
-  return (
-    <div data-tour="clienthead" className={vstack({ alignItems: 'stretch', gap: '600', px: '600', pt: '300', pb: '600', overflowY: 'auto' })}>
+  const bulkBar = selected.length > 0 && <BulkBar count={selected.length} onAddToTour={onAddToTour} onClear={onClear} top={mobile} />
+  const screen = (
+    <div data-tour="clienthead" className={vstack({ alignItems: 'stretch', gap: '600', px: mobile ? '400' : '600', pt: '300', pb: '600', overflowY: 'auto', flex: mobile ? '1' : '[0 1 auto]', minH: '0' })}>
       <ClientHeader />
 
+      {/* Everything under the client header; the mobile tour highlights it as one block. */}
+      <div data-tour="feedbody" className={vstack({ alignItems: 'stretch', gap: '600', flexShrink: '0' })}>
       {/* Tiles: Saved & Tour requests + Saved Searches */}
-      <div data-tour="feedtiles" className={css({ display: 'flex', gap: '900', flexWrap: 'wrap', alignSelf: 'flex-start' })}>
-        <div className={vstack({ alignItems: 'stretch', gap: '[14px]' })}>
+      <div data-tour="feedtiles" className={css({ display: 'flex', gap: mobile ? '400' : '900', flexWrap: mobile ? 'nowrap' : 'wrap', alignSelf: mobile ? 'stretch' : 'flex-start', overflowX: mobile ? 'auto' : 'visible', flexShrink: '0' })}>
+        <div className={vstack({ alignItems: 'stretch', gap: mobile ? '200' : '[14px]', flexShrink: '0' })}>
           <GroupHeading>Saved &amp; Tour requests</GroupHeading>
-          <div className={hstack({ gap: '500' })}>
-            <CountTile src={IMG.savedListings} count={CLIENT_FEED.savedCount} label="Saved listings" />
-            <CountTile src={IMG.tourRequests} count={CLIENT_FEED.tourRequestCount} label="Tour requests" />
+          <div className={hstack({ gap: mobile ? '300' : '500' })}>
+            <CountTile compact={mobile} src={IMG.savedListings} count={CLIENT_FEED.savedCount} label="Saved listings" />
+            <CountTile compact={mobile} src={IMG.tourRequests} count={CLIENT_FEED.tourRequestCount} label="Tour requests" />
           </div>
         </div>
-        <div className={vstack({ alignItems: 'stretch', gap: '[14px]' })}>
+        <div className={vstack({ alignItems: 'stretch', gap: mobile ? '200' : '[14px]', flexShrink: '0' })}>
           <GroupHeading>Saved Searches</GroupHeading>
-          <div className={hstack({ gap: '500' })}>
-            <SavedSearchTile src={IMG.savedSearch} name={CLIENT_FEED.savedSearch.name} sub={CLIENT_FEED.savedSearch.sub} />
-            <AddSearchTile onClick={onAddSearch} />
+          <div className={hstack({ gap: mobile ? '300' : '500' })}>
+            <SavedSearchTile compact={mobile} src={IMG.savedSearch} name={CLIENT_FEED.savedSearch.name} sub={CLIENT_FEED.savedSearch.sub} />
+            <AddSearchTile compact={mobile} onClick={onAddSearch} />
           </div>
         </div>
       </div>
 
-      {activity ? (
-        // Client activity log (prototype extension), newest first.
-        <section aria-label="Client activity" className={vstack({ alignItems: 'stretch', gap: '500' })}>
-          <div className={hstack({ gap: '300', justifyContent: 'space-between' })}>
-            <GroupHeading>Client activity</GroupHeading>
-            <Button styleType="Tertiary" size="sm" startIcon={<IconArrowLeft size={2} />} onClick={() => onDetailTab('homes')}>Back to feed</Button>
-          </div>
-          <ul className={css({ listStyle: 'none', m: '0', p: '0', borderWidth: '100', borderStyle: 'solid', borderColor: 'border.base', borderRadius: '300', bg: 'bg.base' })}>
-            {ACTIVITY.map((a, i) => (
-              <li key={i} className={hstack({ gap: '300', px: '400', py: '300', borderTopWidth: i ? '100' : '0', borderTopStyle: 'solid', borderColor: 'border.base' })}>
-                <span className={css({ display: 'flex', color: 'text.alternate' })}><a.Icon size={16} /></span>
-                <p className={css({ flex: '1', color: 'text.base', m: '0' })} style={{ fontSize: 14 }}>{a.text}</p>
-                <p className={css({ color: 'text.alternate', m: '0' })} style={{ fontSize: 12 }}>{a.when}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : (
+      {(
         <>
           {/* Filter pills + sort + view toggle */}
-          <div className={css({ display: 'flex', alignItems: 'center', gap: '300', flexWrap: 'wrap' })}>
+          <div className={css({ display: 'flex', alignItems: 'center', gap: '300', flexWrap: mobile ? 'nowrap' : 'wrap', overflowX: mobile ? 'auto' : 'visible', flexShrink: '0' })}>
             {PILLS.map(p => (
-              <Button key={p} styleType={pill === p ? 'Primary' : 'Tertiary'} size="sm" onClick={() => setPill(p)}>{p}</Button>
+              <span key={p} className={css({ display: 'flex', flexShrink: '0' })}>
+                <Button styleType={pill === p ? 'Primary' : 'Tertiary'} size="sm" onClick={() => setPill(p)}>{p}</Button>
+              </span>
             ))}
             <div className={css({ flex: '1' })} />
             <button
@@ -1349,27 +1466,37 @@ function ClientsScreen({ detailTab, onDetailTab, selected, onSelect, onAddToTour
           ))}
         </>
       )}
+      </div>
 
-      {!activity && selected.length > 0 && <BulkBar count={selected.length} onAddToTour={onAddToTour} onClear={onClear} />}
+      {!mobile && bulkBar}
     </div>
   )
+  return mobile ? (
+    <div className={css({ position: 'relative', flex: '1', minH: '0', display: 'flex', flexDirection: 'column' })}>
+      {screen}
+      {bulkBar}
+    </div>
+  ) : screen
 }
 
 // ─── Tours screen (replaces the shell's stub) ─────────────────────────────────
 
-function ToursScreen({ tour }: { tour?: BookedTour }) {
+function ToursScreen({ tour, routeShown, onRoute, onOptimize, onReorder }: {
+  tour?: BookedTour; routeShown: boolean; onRoute: (on: boolean) => void; onOptimize: () => void; onReorder: (ids: string[]) => void
+}) {
+  const [layout, setLayout] = useState<'Vertical' | 'Horizontal'>('Vertical')
+  const { containerRef, drag, handle } = useStopDrag(tour?.homes ?? [], onReorder)
   if (!tour) return <div className={css({ p: '600' })}><EmptyNote>No tour selected. Select homes in a client’s feed and choose Add to tour.</EmptyNote></div>
   const homes = tour.homes.map(listingById)
   const past = tour.when === 'past'
-  const [layout, setLayout] = useState<'Vertical' | 'Horizontal'>('Vertical')
   const vertical = layout === 'Vertical'
   return (
-    <div className={vstack({ alignItems: 'stretch', gap: '0', flex: '1', minH: '0' })}>
+    <div data-tour="tourdetail" className={vstack({ alignItems: 'stretch', gap: '0', flex: '1', minH: '0' })}>
       <div className={hstack({ gap: '300', px: '600', pt: '300', pb: '300', flexShrink: '0' })}>
         <p className={css({ fontWeight: 'semibold', color: 'text.base', m: '0' })} style={{ fontSize: 16 }}>{tour.date}</p>
         {tour.sample && <Tag dataColor="yellowSubtle">Sample client</Tag>}
         <div className={css({ flex: '1' })} />
-        <div role="group" aria-label="Layout" className={css({ display: 'inline-flex', bg: 'bg.alternate', borderRadius: 'pill', p: '200' })}>
+        <div role="group" aria-label="Layout" data-tour="tourlayout" className={css({ display: 'inline-flex', bg: 'bg.alternate', borderRadius: 'pill', p: '200' })}>
           {(['Vertical', 'Horizontal'] as const).map(l => (
             <button
               key={l} type="button" onClick={() => setLayout(l)} aria-pressed={layout === l}
@@ -1384,10 +1511,11 @@ function ToursScreen({ tour }: { tour?: BookedTour }) {
       </div>
       <div className={css({ display: 'flex', flexDirection: vertical ? 'column' : 'row', flex: '1', minH: '0' })}>
       <div className={vstack({ alignItems: 'stretch', gap: '0', minW: '0', minH: '0', flex: vertical ? 'none' : '1' })} style={vertical ? { maxHeight: '55%' } : undefined}>
-      <div className={css({ overflow: 'auto', flex: '[0 1 auto]', minH: '0' })}>
+      <div ref={containerRef} data-tour="tourlist" className={css({ overflow: 'auto', flex: '[0 1 auto]', minH: '0' })}>
         <Table spacing="compact" lines aria-label={`Homes on the tour with ${tour.client}`}>
           <Table.Header>
             <Table.Row>
+              <Table.Cell>Move</Table.Cell>
               <Table.Cell>Order</Table.Cell>
               <Table.Cell>Status</Table.Cell>
               <Table.Cell>Address</Table.Cell>
@@ -1398,7 +1526,8 @@ function ToursScreen({ tour }: { tour?: BookedTour }) {
           </Table.Header>
           <Table.Body>
             {homes.map((h, i) => (
-              <Table.Row key={h.id}>
+              <Table.Row key={h.id} data-stop-row="" style={drag === i ? { background: 'rgba(26,24,22,0.08)' } : undefined}>
+                <Table.Cell><MoveHandle i={i} label={h.address1} handle={handle} /></Table.Cell>
                 <Table.Cell>{String.fromCharCode(65 + i)}</Table.Cell>
                 <Table.Cell>Active</Table.Cell>
                 <Table.Cell>{h.address1}</Table.Cell>
@@ -1413,28 +1542,96 @@ function ToursScreen({ tour }: { tour?: BookedTour }) {
       <div className={hstack({ gap: '400', px: '600', py: '300', flexShrink: '0', borderBottomWidth: '100', borderBottomStyle: 'solid', borderColor: 'border.base' })}>
         <Link href="#">Add listing</Link>
         <Link href="#">Add a stop</Link>
+        <div className={css({ flex: '1' })} />
+        <TripPill stops={tour.homes} routeShown={routeShown} />
       </div>
       </div>
-      <TourMap count={homes.length} fill={!vertical} />
+      <TourMap count={homes.length} order={tour.homes} route={routeShown} fill={!vertical}>
+        <RouteButtons routeShown={routeShown} onRoute={onRoute} onOptimize={onOptimize} />
+      </TourMap>
       </div>
     </div>
   )
 }
 
 // A stand-in street map with a lettered pin per stop. The product embeds a live map.
+// "Open in": hands the tour's route to Google Maps or Apple Maps (the sample addresses aren't real places).
+function OpenInMenu({ stops, open, onOpenChange, children }: { stops: string[]; open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode }) {
+  const addresses = stops.map(id => { const l = listingById(id); return `${l.address1}, ${l.address2}` })
+  const go = (url: string) => { window.open(url, '_blank', 'noopener'); onOpenChange(false) }
+  return (
+    <Popover
+      open={open} onClose={() => onOpenChange(false)} placement="bottom-end" offset={8} maxWidth="240px" header="Open in"
+      body={
+        <div className={vstack({ alignItems: 'stretch', gap: '100', mt: '200' })}>
+          <Button styleType="Tertiary" size="sm" onClick={() => go(`https://www.google.com/maps/dir/${addresses.map(encodeURIComponent).join('/')}`)}>Google Maps</Button>
+          <Button styleType="Tertiary" size="sm" onClick={() => go(`https://maps.apple.com/?saddr=${encodeURIComponent(addresses[0])}&daddr=${addresses.slice(1).map(encodeURIComponent).join('+to:')}`)}>Apple Maps</Button>
+        </div>
+      }
+    >
+      {children}
+    </Popover>
+  )
+}
+
+// Show route / Optimize, floating over the top corners of a tour's map.
+function RouteButtons({ routeShown, onRoute, onOptimize }: { routeShown: boolean; onRoute: (on: boolean) => void; onOptimize: () => void }) {
+  const pill = css({ position: 'absolute', zIndex: '[3]', top: '300', h: '[36px]', px: '400', borderRadius: 'pill', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'semibold', boxShadow: 'float' })
+  return (
+    <>
+      <button type="button" data-tour="tourroute" className={pill} onClick={() => onRoute(!routeShown)}
+        style={{ left: 12, background: '#2B2927', color: '#FFFFFF', fontSize: 14 }}>{routeShown ? 'Hide route' : 'Show route'}</button>
+      <button type="button" data-tour="touroptimize" className={pill} onClick={onOptimize}
+        style={{ right: 12, background: '#FFFFFF', color: '#2B2927', fontSize: 14 }}>Optimize</button>
+    </>
+  )
+}
+
+// Drive and walk time for the route; 0 until the route is shown.
+function TripPill({ stops, routeShown }: { stops: string[]; routeShown: boolean }) {
+  return (
+    <span className={css({ display: 'inline-flex', bg: 'bg.alternate', borderRadius: 'pill', p: '100', whiteSpace: 'nowrap' })} style={{ fontSize: 13 }}>
+      <span className={css({ px: '300', py: '100', borderRadius: 'pill', bg: 'bg.base', boxShadow: 'raised', fontWeight: 'semibold' })}>Drive {routeShown ? driveMins(stops) : 0} min</span>
+      <span className={css({ px: '300', py: '100', color: 'text.alternate' })}>Walk {routeShown ? walkMins(stops) : 0} min</span>
+    </span>
+  )
+}
+
 const MAP_PINS = [{ x: 22, y: 30 }, { x: 56, y: 58 }, { x: 78, y: 28 }, { x: 40, y: 78 }]
-function TourMap({ count, label = 'Map of the tour stops', fill }: { count: number; label?: string; fill?: boolean }) {
+// Where each listing sits on the stand-in map, so a stop keeps its place when the order changes.
+const STOP_POS: Record<string, { x: number; y: number }> = { l1: MAP_PINS[0], l3: MAP_PINS[1], l4: MAP_PINS[2], l5: MAP_PINS[3] }
+const pathLength = (ids: string[]) => ids.slice(1).reduce((n, id, i) => n + Math.hypot(STOP_POS[id].x - STOP_POS[ids[i]].x, STOP_POS[id].y - STOP_POS[ids[i]].y), 0)
+// Quickest order through the stops (brute force; a tour has a handful of stops).
+function quickestOrder(ids: string[]): string[] {
+  if (ids.length < 3 || ids.length > 7) return ids
+  const perms = (rest: string[]): string[][] => rest.length <= 1 ? [rest] : rest.flatMap((x, i) => perms([...rest.slice(0, i), ...rest.slice(i + 1)]).map(p => [x, ...p]))
+  return perms(ids).reduce((best, p) => pathLength(p) < pathLength(best) ? p : best, ids)
+}
+// Stand-in drive and walk times, from the length of the route on the map.
+const driveMins = (ids: string[]) => Math.max(1, Math.round(pathLength(ids) * 0.4))
+const walkMins = (ids: string[]) => Math.max(1, Math.round(pathLength(ids) * 2.2))
+
+function TourMap({ count, label = 'Map of the tour stops', fill, order, route, children }: {
+  count: number; label?: string; fill?: boolean
+  // A tour's stops in order (listing ids): pins are lettered by position, and `route` joins them.
+  order?: string[]; route?: boolean; children?: React.ReactNode
+}) {
+  const pins = order ? order.map(id => STOP_POS[id]) : MAP_PINS.slice(0, count)
   return (
     <div role="img" aria-label={label} className={css({ position: 'relative', flex: '1', minH: fill ? '0' : '[160px]', bg: 'gray.100', overflow: 'hidden', color: 'gray.300' })}>
       <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {[12, 31, 47, 66, 84].map(y => <line key={`h${y}`} x1="0" x2="100" y1={y} y2={y + (y % 3) * 3 - 3} stroke="currentColor" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
         {[8, 27, 44, 63, 81, 94].map(x => <line key={`v${x}`} y1="0" y2="100" x1={x} x2={x + (x % 4) * 3 - 4} stroke="currentColor" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
         <path d="M0 90 C 30 60, 60 70, 100 20" fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+        {route && pins.length > 1 && (
+          <polyline points={pins.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#D92228" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        )}
       </svg>
-      {MAP_PINS.slice(0, count).map((p, i) => (
+      {pins.map((p, i) => (
         <span key={i} className={css({ position: 'absolute', w: '[28px]', h: '[28px]', ml: '[-14px]', mt: '[-14px]', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'circle', bg: 'text.base', color: 'bg.base', fontWeight: 'bold', boxShadow: 'float' })}
           style={{ left: `${p.x}%`, top: `${p.y}%`, fontSize: 13 }}>{String.fromCharCode(65 + i)}</span>
       ))}
+      {children}
     </div>
   )
 }
@@ -1600,27 +1797,31 @@ function ThreadsList({ threads, onClose, onNewChat, back = false }: { threads: T
 }
 
 // The panel is absolutely positioned by the Shell; it animates width (0 → 420 →
-// calc(100% − 64px) when expanded). Inside, the Threads history renders two ways:
+// calc(100% − 64px) when expanded). `overflow: clip`, not hidden: a tour's scrollIntoView on the
+// off-screen Threads overlay would otherwise scroll the panel sideways and leave it blank.
+// Inside, the Threads history renders two ways:
 // an inline dock (when expanded) and a sliding overlay (when docked-narrow).
 function AssistantPanel({
-  msgs, input, onInput, onSend, onPick, open, expanded, over, onToggleOver, onToggleExpand, onNewChat, onClose,
+  msgs, input, onInput, onSend, onPick, open, expanded, over, onToggleOver, onToggleExpand, onNewChat, onClose, mobile,
 }: {
   msgs: Msg[]; input: string; onInput: (v: string) => void; onSend: () => void; onPick: (a: AssistAction) => void
   open: boolean; expanded: boolean; over: boolean
   onToggleOver: () => void; onToggleExpand: () => void; onNewChat: () => void; onClose: () => void
+  // Phones: full screen, with Threads sliding over it and no expand control.
+  mobile?: boolean
 }) {
-  const width = !open ? '0px' : expanded ? 'calc(100% - 64px)' : PANEL_WIDTH
-  const dockW = over && expanded ? 300 : 0
-  const overX = over && !expanded ? 0 : 112
+  const width = !open ? '0px' : mobile ? '100%' : expanded ? 'calc(100% - 64px)' : PANEL_WIDTH
+  const dockW = !mobile && over && expanded ? 300 : 0
+  const overX = over && (mobile || !expanded) ? 0 : 112
   const home = msgs.length === 0
-  const dockedInHeader = expanded && over
+  const dockedInHeader = !mobile && expanded && over
 
   return (
     <aside
       aria-label="RealAssist AI"
       data-tour="assistpanel"
       aria-hidden={!open}
-      className={css({ position: 'absolute', top: '0', right: '0', bottom: '0', zIndex: '[20]', bg: 'bg.alternate', borderLeftWidth: '100', borderLeftStyle: 'solid', borderColor: 'gray.200', overflow: 'hidden', display: 'flex' })}
+      className={css({ position: 'absolute', top: '0', right: '0', bottom: '0', zIndex: mobile ? '[40]' : '[20]', bg: 'bg.alternate', borderLeftWidth: '100', borderLeftStyle: 'solid', borderColor: 'gray.200', overflow: 'clip', display: 'flex' })}
       style={{ width, visibility: open ? 'visible' : 'hidden', transition: `width 220ms ${EASE}` }}
     >
       {/* Inline dock — revealed left of the panel when expanded */}
@@ -1628,7 +1829,7 @@ function AssistantPanel({
         className={css({ flexShrink: '0', overflow: 'hidden', borderRightWidth: '100', borderRightStyle: 'solid', borderColor: 'border.base' })}
         style={{ width: dockW, background: '#F8F8F7', transition: `width 220ms ${EASE}` }}
         aria-hidden={!dockedInHeader}
-        data-tour="threads"
+        data-tour={mobile ? undefined : 'threads'}
       >
         <div style={{ width: 300, height: '100%' }}>
           <ThreadsList threads={THREADS} onClose={onToggleOver} onNewChat={onNewChat} />
@@ -1640,7 +1841,7 @@ function AssistantPanel({
         {/* Header — history toggle · centered wordmark · new-conversation / expand / close */}
         <div className={css({ display: 'flex', alignItems: 'center', gap: '200', px: '400', py: '400', flexShrink: '0' })}>
           {!dockedInHeader && (
-            <Button styleType="Secondary" size="sm" iconOnly={<IconSubnav size={16} />} aria-label="Conversation history" onClick={onToggleOver} />
+            <span data-tour="threadsbtn" className={css({ display: 'flex' })}><Button styleType="Secondary" size="sm" iconOnly={<IconSubnav size={16} />} aria-label="Conversation history" onClick={onToggleOver} /></span>
           )}
           <div className={css({ flex: '[1 1 auto]', display: 'flex', justifyContent: 'center' })}>
             <img src="assets/logo-realassist-ai.svg" alt="RealAssist™ AI" className={css({ w: 'auto', display: 'block' })} style={{ height: 32 }} />
@@ -1648,11 +1849,11 @@ function AssistantPanel({
           {!dockedInHeader && (
             <span data-tour="newchat" className={css({ display: 'flex' })}><CircleButton label="New conversation" onClick={onNewChat}><IconCompose size={16} /></CircleButton></span>
           )}
-          <span data-tour="expandpanel" className={css({ display: 'flex' })}>
+          {!mobile && <span data-tour="expandpanel" className={css({ display: 'flex' })}>
             <CircleButton label={expanded ? 'Collapse panel' : 'Expand panel'} onClick={onToggleExpand}>
               {expanded ? <IconCollapsePanel size={14} /> : <IconExpandPanel size={14} />}
             </CircleButton>
-          </span>
+          </span>}
           <span data-tour="closepanel" className={css({ display: 'flex' })}><CircleButton label="Close RealAssist" onClick={onClose}><IconClose size={12} /></CircleButton></span>
         </div>
 
@@ -1671,6 +1872,7 @@ function AssistantPanel({
 
         {/* Sliding overlay — the Threads history over the panel when docked-narrow */}
         <div
+          data-tour={mobile ? 'threads' : undefined}
           className={css({ position: 'absolute', top: '0', right: '0', bottom: '0', left: '0', bg: 'bg.alternate' })}
           style={{ transform: `translateX(${overX}%)`, transition: `transform 220ms ${EASE}`, boxShadow: '-4px 0 16px rgba(26,24,22,0.12)' }}
         >
@@ -1688,7 +1890,8 @@ function AssistantPanel({
 const CHAT_W = 380
 const CHAT_W_EXPANDED = 560
 
-function ChatWindow({ open, right, expanded, onToggleExpand, onClose, ...body }: {
+function ChatWindow({ open, right, expanded, onToggleExpand, onClose, mobile, ...body }: {
+  mobile?: boolean
   open: boolean; right: number; expanded: boolean; onToggleExpand: () => void; onClose: () => void
   chat: ChatMsg[]; chipsUsed: string[]; onChip: (c: Chip) => void; onSend: (msg: ChatMsg, reply: string) => void
 }) {
@@ -1696,8 +1899,10 @@ function ChatWindow({ open, right, expanded, onToggleExpand, onClose, ...body }:
   return (
     <section
       role="dialog" data-tour="chatwindow" aria-label={`Chat with ${SAMPLE_CLIENT.name}`}
-      className={vstack({ position: 'absolute', bottom: '600', zIndex: '[30]', alignItems: 'stretch', gap: '0', bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'gray.200', borderRadius: '300', boxShadow: 'float', overflow: 'hidden' })}
-      style={{ right, width: expanded ? CHAT_W_EXPANDED : CHAT_W, height: 'min(560px, calc(100vh - 120px))', transition: `width 220ms ${EASE}, right 220ms ${EASE}` }}
+      className={vstack(mobile
+        ? { position: 'absolute', inset: '0', zIndex: '[40]', alignItems: 'stretch', gap: '0', bg: 'bg.base', overflow: 'hidden' }
+        : { position: 'absolute', bottom: '600', zIndex: '[30]', alignItems: 'stretch', gap: '0', bg: 'bg.base', borderWidth: '100', borderStyle: 'solid', borderColor: 'gray.200', borderRadius: '300', boxShadow: 'float', overflow: 'hidden' })}
+      style={mobile ? undefined : { right, width: expanded ? CHAT_W_EXPANDED : CHAT_W, height: 'min(560px, calc(100vh - 120px))', transition: `width 220ms ${EASE}, right 220ms ${EASE}` }}
     >
       <div className={hstack({ gap: '200', px: '300', py: '300', borderBottomWidth: '100', borderBottomStyle: 'solid', borderColor: 'gray.200', flexShrink: '0' })}>
         <CircleButton label="Back to chats" onClick={onClose}><IconArrowLeft size={2} /></CircleButton>
@@ -1707,9 +1912,9 @@ function ChatWindow({ open, right, expanded, onToggleExpand, onClose, ...body }:
           <Link href="#" className={css({ color: 'text.alternate' })}>View details</Link>
         </div>
         <Tag dataColor="yellowSubtle">Sample</Tag>
-        <CircleButton label={expanded ? 'Shrink chat' : 'Expand chat'} onClick={onToggleExpand}>
+        {!mobile && <CircleButton label={expanded ? 'Shrink chat' : 'Expand chat'} onClick={onToggleExpand}>
           {expanded ? <IconCollapsePanel size={14} /> : <IconExpandPanel size={14} />}
-        </CircleButton>
+        </CircleButton>}
         <CircleButton label="Close chat" onClick={onClose}><IconClose size={12} /></CircleButton>
       </div>
       <div className={css({ px: '400', pt: '300', flexShrink: '0' })}>
@@ -1794,7 +1999,7 @@ function TourModalView({
   const today = new Date()
   const legend = css({ fontWeight: 'semibold', color: 'text.base', mb: '300', p: '0' })
   return (
-    <Modal open={mode !== 'closed'} onClose={onClose} width="560px" data-tour={mode === 'choose' ? 'tourdialog' : undefined}>
+    <Modal open={mode !== 'closed'} onClose={onClose} width="min(560px, calc(100vw - 16px))" data-tour={mode === 'choose' ? 'tourdialog' : undefined}>
       <Modal.Header title={mode === 'new' ? 'New tour' : 'Add to tour'} />
       <Modal.Body>
         {mode === 'new' ? (
@@ -1908,13 +2113,13 @@ function InviteModal({ open, demo, onInvite, onClose, children }: {
   const section = vstack({ alignItems: 'stretch', gap: '300', pt: '500', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })
   const sectionTitle = css({ fontWeight: 'semibold', color: 'text.base', m: '0' })
   return (
-    <Modal open={open} onClose={onClose} width="560px">
+    <Modal open={open} onClose={onClose} width="min(560px, calc(100vw - 16px))">
       <Modal.Header title="Invite client" />
       <Modal.Body>
         <div data-tour="addbody" className={vstack({ alignItems: 'stretch', gap: '500', py: '400' })}>
           <section data-tour="inviteform" aria-label="Client information" className={vstack({ alignItems: 'stretch', gap: '400' })}>
             <h3 className={sectionTitle} style={{ fontSize: 16 }}>Client information</h3>
-            <div className={grid({ columns: 2, gap: '400' })}>
+            <div className={grid({ columns: { base: 1, md: 2 }, gap: '400' })}>
               <TextInput label="First name" required autoComplete="off" value={f.first} onChange={set('first')}
                 error={tried && !f.first.trim()} errorText="Enter a first name" />
               <TextInput label="Last name" required autoComplete="off" value={f.last} onChange={set('last')}
@@ -1971,12 +2176,282 @@ function InviteModal({ open, demo, onInvite, onClose, children }: {
 
 type Active = { id: TourId; i: number } | null
 
+// ─── Phone layout ─────────────────────────────────────────────────────────────
+// Under 768px the shell shows one pane at a time: a bottom nav replaces the rail, the
+// Clients / Tours subnav is the whole screen, RealAssist™ AI and Chat open full screen,
+// and Ask RealAssist™ AI is an icon-only button fixed at the bottom right.
+
+const NAV_H = 64
+
+function BottomNav({ route, chatOpen, onNavigate, onChat, onSupport }: {
+  route: Route; chatOpen: boolean; onNavigate: (r: Route) => void; onChat: () => void; onSupport: () => void
+}) {
+  const cell = (key: string, label: string, icon: React.ReactNode, on: boolean, onClick: () => void, badge?: number) => (
+    <button
+      key={key} type="button" onClick={onClick} aria-current={on ? 'page' : undefined}
+      className={css({ flex: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '[2px]', border: 'none', bg: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'text.base', p: '0' })}
+    >
+      <span className={css({ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', w: '[44px]', h: '[32px]', borderRadius: '[10px]', bg: on ? 'gray.200' : 'transparent' })}>
+        {icon}
+        {badge ? (
+          <span aria-hidden className={css({ position: 'absolute', top: '[-2px]', right: '[4px]', minW: '[16px]', h: '[16px]', px: '[4px]', borderRadius: 'pill', bg: '[#B41C21]', color: 'text.inverse', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' })} style={{ fontSize: 10 }}>{badge}</span>
+        ) : null}
+      </span>
+      <span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{label}</span>
+    </button>
+  )
+  return (
+    <nav
+      aria-label="Main" data-tour="rail"
+      className={css({ display: 'flex', flexShrink: '0', bg: 'bg.base', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'gray.200', px: '200' })}
+      style={{ height: NAV_H, paddingBottom: 'env(safe-area-inset-bottom)', boxSizing: 'content-box' }}
+    >
+      {NAV_ITEMS.map(({ id, label, Icon }) => cell(id, label, <Icon size={20} />, route === id && !chatOpen, () => onNavigate(id)))}
+      {cell('chat', 'Chat', <IconChat size={20} />, chatOpen, onChat, 2)}
+      {cell('support', 'Support', <IconSupport size={20} />, false, onSupport)}
+    </nav>
+  )
+}
+
+// The agent's initials, far right in each phone header (the Account entry; inert here).
+function MobileAccount() {
+  return (
+    <span className={css({ display: 'flex', flexShrink: '0' })} title={`${AGENT.name} · ${AGENT.brokerage}`}>
+      <Initials initials={AGENT.initials} size={32} fontSize={12} />
+    </span>
+  )
+}
+
+// Icon-only Ask RealAssist™ AI, fixed bottom right above the nav.
+function MobileFab({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button" data-tour="askra" aria-label="Ask RealAssist AI" onClick={onClick}
+      className={css({ position: 'absolute', right: '400', zIndex: '[30]', w: '[52px]', h: '[52px]', borderRadius: 'circle', border: 'none', cursor: 'pointer', color: 'text.inverse', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'float' })}
+      style={{ bottom: NAV_H + 16, background: BRAND_GRADIENT_PILL }}
+    >
+      <IconRealAssist size={24} />
+    </button>
+  )
+}
+
+function MobileFeedHeader({ feed, activity, onBack, onActivity }: {
+  feed: React.ReactNode; activity: boolean; onBack: () => void; onActivity: () => void
+}) {
+  return (
+    <header className={hstack({ gap: '200', px: '300', py: '300', flexShrink: '0', bg: 'bg.base' })}>
+      <CircleButton label={activity ? 'Back to feed' : 'Back to clients'} onClick={activity ? onActivity : onBack}><IconArrowLeft size={2} /></CircleButton>
+      <div className={css({ flex: '1', minW: '0' })}>
+        {activity ? (
+          <h1 className={css({ m: '0', fontWeight: 'semibold', color: 'text.base', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' })}
+            style={{ fontFamily: DISPLAY_FONT, fontSize: 20, lineHeight: '26px', letterSpacing: '-0.02em' }}>{SAMPLE_CLIENT.name} - Client Activity</h1>
+        ) : feed}
+      </div>
+      <span data-tour="activitytab" className={css({ display: 'flex' })}>
+        <CircleButton label={activity ? 'View feed' : 'Client activity'} onClick={onActivity}>{activity ? <IconClients size={18} /> : <IconClientActivity size={18} />}</CircleButton>
+      </span>
+      <MobileAccount />
+    </header>
+  )
+}
+
+function MobileSearch() {
+  const [list, setList] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  return (
+    <div className={vstack({ alignItems: 'stretch', gap: '0', flex: '1', minH: '0', bg: 'bg.base' })}>
+      <header className={hstack({ gap: '300', px: '300', pt: '300', pb: '200', flexShrink: '0' })}>
+        <div className={css({ flex: '1', minW: '0' })}><SearchField flush placeholder="City, neighborhood, address, school…" ariaLabel="Search homes" /></div>
+        <Button styleType="Ghost" size="sm">Save</Button>
+        <MobileAccount />
+      </header>
+      <div className={css({ display: 'flex', gap: '200', px: '300', pb: '300', flexShrink: '0', overflowX: 'auto' })}>
+        <Button styleType="Secondary" size="sm" startIcon={<IconSort />}>Filters</Button>
+        <span className={css({ display: 'flex', '& button': { borderColor: '[#B41C21]', color: '[#B41C21]' } })}>
+          <Button styleType="Secondary" size="sm" startIcon={<IconFlame size={16} />}>Hotsheet</Button>
+        </span>
+        {SEARCH_FILTERS.map(f => <span key={f} className={css({ display: 'flex', flexShrink: '0' })}><Button styleType="Secondary" size="sm">{f}</Button></span>)}
+      </div>
+      <div className={css({ position: 'relative', flex: '1', minH: '0', display: 'flex', flexDirection: 'column' })}>
+        {list ? (
+          <>
+            <div className={vstack({ alignItems: 'stretch', gap: '400', flex: '1', minH: '0', overflowY: 'auto', px: '300', pt: '200', pb: '[120px]' })}>
+              <p className={css({ m: '0', textAlign: 'center', fontWeight: 'bold', color: 'text.base' })} style={{ fontSize: 15 }}>30 listings</p>
+              {LISTINGS.map(l => (
+                <ListingCard key={l.id} listing={l} selected={picked.includes(l.id)}
+                  onSelect={on => setPicked(p => on ? [...p, l.id] : p.filter(x => x !== l.id))} />
+              ))}
+            </div>
+            <div className={css({ position: 'absolute', left: '0', right: '0', display: 'flex', justifyContent: 'center' })} style={{ bottom: 16 }}>
+              <Button styleType="Primary" size="sm" onClick={() => setList(false)}>Map</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <TourMap count={4} label="Map of homes for sale" fill />
+            <button
+              type="button" onClick={() => setList(true)}
+              className={css({ position: 'absolute', left: '0', right: '0', bottom: '0', border: 'none', cursor: 'pointer', fontFamily: 'inherit', bg: 'bg.base', color: 'text.base', borderTopLeftRadius: '[20px]', borderTopRightRadius: '[20px]', boxShadow: 'float', pt: '300', pb: '500', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '[2px]' })}
+            >
+              <span aria-hidden className={css({ w: '[40px]', h: '[4px]', borderRadius: 'pill', bg: 'gray.300', mb: '200' })} />
+              <span style={{ fontSize: 15, fontWeight: 700 }}>30 listings</span>
+              <span className={css({ color: 'text.alternate' })} style={{ fontSize: 13 }}>View search stats</span>
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Reordering a tour's stops by dragging a Move handle (touch or mouse) or with the arrow keys
+// on a focused handle. Rows carry `data-stop-row`; the container holds them in order.
+function useStopDrag(ids: string[], onReorder: (ids: string[]) => void) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [drag, setDrag] = useState<number | null>(null)
+  const dragRef = useRef<number | null>(null)
+  const idsRef = useRef(ids)
+  idsRef.current = ids
+  const move = (from: number, to: number) => {
+    const cur = idsRef.current
+    if (to < 0 || to >= cur.length || from === to) return
+    const next = [...cur]
+    const [x] = next.splice(from, 1)
+    next.splice(to, 0, x)
+    onReorder(next)
+  }
+  useEffect(() => {
+    if (drag === null) return
+    const onMove = (e: PointerEvent) => {
+      const rows = containerRef.current?.querySelectorAll('[data-stop-row]')
+      const from = dragRef.current
+      if (!rows?.length || from === null) return
+      const first = rows[0].getBoundingClientRect()
+      const to = Math.max(0, Math.min(idsRef.current.length - 1, Math.floor((e.clientY - first.top) / first.height)))
+      if (to !== from) { move(from, to); dragRef.current = to; setDrag(to) }
+    }
+    const end = () => { dragRef.current = null; setDrag(null) }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end) }
+  }, [drag === null]) // eslint-disable-line react-hooks/exhaustive-deps
+  const handle = (i: number) => ({
+    onPointerDown: (e: React.PointerEvent) => { e.preventDefault(); dragRef.current = i; setDrag(i) },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'ArrowUp') { e.preventDefault(); move(i, i - 1) } else if (e.key === 'ArrowDown') { e.preventDefault(); move(i, i + 1) }
+    },
+    style: { touchAction: 'none' } as React.CSSProperties,
+  })
+  return { containerRef, drag, handle }
+}
+
+function MoveHandle({ i, label, handle }: { i: number; label: string; handle: ReturnType<typeof useStopDrag>['handle'] }) {
+  return (
+    <button
+      type="button" aria-label={`Move ${label}. Drag, or use the up and down arrow keys.`} {...handle(i)}
+      className={css({ display: 'flex', alignItems: 'center', justifyContent: 'center', w: '[32px]', h: '[40px]', border: 'none', bg: 'transparent', cursor: 'grab', color: 'text.alternate' })}
+    >
+      <IconDrag size={16} />
+    </button>
+  )
+}
+
+// A tour's stops as a list the agent can reorder (phones).
+function StopRows({ ids, tourDate, onReorder }: { ids: string[]; tourDate: string; onReorder: (ids: string[]) => void }) {
+  const { containerRef, drag, handle } = useStopDrag(ids, onReorder)
+  const cols = '48px 48px 72px 40px 1fr'
+  const head = css({ fontWeight: 'bold', color: 'text.base' })
+  return (
+    <div ref={containerRef} data-tour="tourlist" aria-label={`Stops for ${tourDate}`} className={css({ pb: '[96px]' })}>
+      <div className={css({ display: 'grid', alignItems: 'center', px: '400', py: '300', gap: '0' })} style={{ gridTemplateColumns: cols, fontSize: 12 }} aria-hidden>
+        <span className={head}>Move</span><span className={head}>Order</span><span className={head}>Status</span><span className={head}>D/S</span><span className={head}>Address</span>
+      </div>
+      <ul className={css({ listStyle: 'none', m: '0', p: '0' })}>
+        {ids.map((id, i) => {
+          const l = listingById(id)
+          return (
+            <li key={id} data-stop-row
+              className={css({ display: 'grid', alignItems: 'center', px: '400', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base', bg: drag === i ? 'gray.200' : i % 2 === 0 ? 'bg.alternate' : 'bg.base' })}
+              style={{ gridTemplateColumns: cols, height: 52, fontSize: 14 }}>
+              <MoveHandle i={i} label={l.address1} handle={handle} />
+              <span>{String.fromCharCode(65 + i)}</span>
+              <span>Active</span>
+              <span>—</span>
+              <span className={css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}>{l.address1}</span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function MobileTourDetail({ tour, pane, routeShown, mapsOpen, onMapsOpen, onCalendar, onPane, onRoute, onBack, onReorder, onOptimize }: {
+  tour: BookedTour; pane: 'map' | 'list'; routeShown: boolean; mapsOpen: boolean
+  onMapsOpen: (open: boolean) => void; onCalendar: () => void
+  onPane: (p: 'map' | 'list') => void; onRoute: (on: boolean) => void; onBack: () => void
+  onReorder: (ids: string[]) => void; onOptimize: () => void
+}) {
+  const [note, setNote] = useState('')
+  const noteTimer = useRef<number>()
+  useEffect(() => () => window.clearTimeout(noteTimer.current), [])
+  const say = (text: string) => { setNote(text); window.clearTimeout(noteTimer.current); noteTimer.current = window.setTimeout(() => setNote(''), 3000) }
+  const stops = tour.homes
+  return (
+    <div className={vstack({ alignItems: 'stretch', gap: '0', flex: '1', minH: '0', bg: 'bg.base' })}>
+      <header className={hstack({ gap: '200', px: '300', py: '300', flexShrink: '0', borderBottomWidth: '100', borderBottomStyle: 'solid', borderColor: 'border.base' })}>
+        <CircleButton label="Back to tours" onClick={onBack}><IconArrowLeft size={2} /></CircleButton>
+        <div className={css({ flex: '1', minW: '0' })}>
+          <p className={css({ m: '0', fontWeight: 'bold', color: 'text.base', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })} style={{ fontSize: 15 }}>{tour.client}</p>
+          <p className={css({ m: '0', color: 'text.alternate' })} style={{ fontSize: 13 }}>{tour.date} {stops.length} {stops.length === 1 ? 'Stop' : 'Stops'} | {tour.time}</p>
+        </div>
+        <Menu label="More actions" size={36} items={[{ label: 'Export' }, { label: 'Draft a text' }]} />
+        <span data-tour="tourcalendar" className={css({ display: 'flex' })}>
+          <CircleButton label="Add to calendar" onClick={() => { onCalendar(); say('Added to your calendar.') }}><IconCalendar size={18} /></CircleButton>
+        </span>
+        <span data-tour="tourmaps" className={css({ display: 'flex' })}>
+          <OpenInMenu stops={stops} open={mapsOpen} onOpenChange={onMapsOpen}>
+            <CircleButton label="Open in" pressed={mapsOpen} onClick={() => onMapsOpen(!mapsOpen)}><IconExport size={18} /></CircleButton>
+          </OpenInMenu>
+        </span>
+        <MobileAccount />
+      </header>
+      {pane === 'map' && (
+        <div className={hstack({ gap: '300', px: '400', py: '200', flexShrink: '0', justifyContent: 'space-between' })} style={{ fontSize: 14 }}>
+          <span className={hstack({ gap: '300' })}><Link href="#">Add listing</Link><Link href="#">Add a stop</Link></span>
+          <TripPill stops={stops} routeShown={routeShown} />
+        </div>
+      )}
+      <div className={css({ position: 'relative', flex: '1', minH: '0', display: 'flex', flexDirection: 'column' })}>
+        {pane === 'map' ? (
+          <TourMap count={stops.length} order={stops} route={routeShown} fill>
+            <RouteButtons routeShown={routeShown} onRoute={onRoute} onOptimize={onOptimize} />
+          </TourMap>
+        ) : (
+          <div className={css({ flex: '1', minH: '0', overflowY: 'auto' })}><StopRows ids={stops} tourDate={tour.date} onReorder={onReorder} /></div>
+        )}
+        <div role="group" aria-label="Tour view" data-tour="tourswitch" className={css({ position: 'absolute', left: '50%', display: 'inline-flex', bg: 'bg.base', borderRadius: 'pill', p: '200', boxShadow: 'float' })} style={{ bottom: 16, transform: 'translateX(-50%)' }}>
+          {(['map', 'list'] as const).map(p => (
+            <button key={p} type="button" aria-pressed={pane === p} onClick={() => onPane(p)}
+              className={css({ px: '500', h: '36px', borderRadius: 'pill', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'semibold', color: 'text.base', bg: pane === p ? 'gray.200' : 'transparent' })}
+              style={{ fontSize: 15 }}>{p === 'map' ? 'Map' : 'List'}</button>
+          ))}
+        </div>
+        {note && <p role="status" className={css({ position: 'absolute', left: '400', right: '400', top: '300', m: '0', zIndex: '[4]', px: '400', py: '300', bg: 'bg.inverse', color: 'text.inverse', borderRadius: '300', boxShadow: 'float' })} style={{ fontSize: 13 }}>{note}</p>}
+      </div>
+    </div>
+  )
+}
+
 export default function Shell({ locked = false, dimDuringTours = true, listCorner = 'bottom-right' }: {
   locked?: boolean
   // Dev props for comparing treatments; not product controls.
   dimDuringTours?: boolean
   listCorner?: ListCorner
 }) {
+  const mobile = useIsMobile()
+  const TB = mobile ? MOBILE_TOUR_BY_ID : TOUR_BY_ID
   const [ws, setWs] = useState<Workspace>(INITIAL_WS)
   const [inviteDemo, setInviteDemo] = useState<typeof EMPTY_INVITE | null>(null)
   const patch = useCallback((p: Partial<Workspace>) => setWs(s => ({ ...s, ...p })), [])
@@ -1990,6 +2465,16 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const [active, setActive] = useState<Active>(null)
   const [base, setBase] = useState<Baseline>(() => baselineOf(INITIAL_WS))
   const [listFocus, setListFocus] = useState(0)
+  // A short message when the tour list goes away, so the agent knows how to get it back.
+  const [listNote, setListNote] = useState('')
+  const noteTimer = useRef<number>()
+  useEffect(() => () => window.clearTimeout(noteTimer.current), [])
+  const flash = (note: string) => {
+    setListNote(note)
+    window.clearTimeout(noteTimer.current)
+    noteTimer.current = window.setTimeout(() => setListNote(''), 3000)
+  }
+  const hideList = (note: string) => { setListGone(true); setListOpen(false); flash(note) }
 
   useEffect(() => { savePrefs({ toursDone: done, listDismissed: listGone, welcomeSeen: !welcome }) }, [done, listGone, welcome])
 
@@ -2014,7 +2499,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const selectHome = (id: string, next: boolean) => setWs(s => ({ ...s, selected: next ? [...s.selected.filter(x => x !== id), id] : s.selected.filter(x => x !== id) }))
   // Creating a tour (or adding to one) clears the selection and lands on Tours.
   const finishTour = (s: Workspace, tours: BookedTour[], tourId: string): Workspace =>
-    ({ ...s, tours, tourId, tourTab: 'Upcoming', selected: [], draft: { clientId: null, date: null }, tourModal: 'closed', route: 'tours' })
+    ({ ...s, tours, tourId, tourTab: 'Upcoming', tourView: 'list', selected: [], draft: { clientId: null, date: null }, tourModal: 'closed', route: 'tours' })
   const createTour = (force = false) => setWs(s => {
     const homes = s.selected.length ? s.selected : force ? ['l1', 'l3'] : []
     const clientId = s.draft.clientId ?? (force ? SAMPLE_CLIENT.id : null)
@@ -2036,16 +2521,30 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const openInvite = () => patch({ inviteOpen: true, feedMenuOpen: false })
   const closeSheet = () => patch({ sheet: null, expanded: false, over: false })
 
+  // Reordering a tour's stops, by hand or with Optimize.
+  const setStops = (tourId: string, homes: string[]) => setWs(s => ({ ...s, tours: s.tours.map(t => t.id === tourId ? { ...t, homes } : t) }))
+  const optimizeTour = () => {
+    if (shownTour) setStops(shownTour.id, quickestOrder(shownTour.homes))
+    setWs(s => ({ ...s, optimized: s.optimized + 1, routeShown: true }))
+  }
+
   // "Show me": perform the stop's action on the agent's behalf.
   function doIt(c: Condition) {
     switch (c) {
       case 'feedMenuOpen': return patch({ feedMenuOpen: true })
       case 'chatOpen': return openChat()
       case 'chatSent': return sendChip(CHIPS.find(x => !ws.chipsUsed.includes(x.id)) ?? CHIPS[0])
-      case 'homesPicked': return patch({ selected: ['l1', 'l3'] })
+      case 'homesPicked': return patch({ selected: ['l1', 'l3', 'l4'] })
       case 'addToTourOpen': return openTourModal()
       case 'newTourStarted': return startNewTour()
       case 'clientPicked': return setWs(s => ({ ...s, draft: { ...s.draft, clientId: SAMPLE_CLIENT.id } }))
+      case 'tourOpened': return patch({ route: 'tours', tourView: 'detail' })
+      case 'tourListShown': return patch({ tourPane: 'list' })
+      case 'routeShown': return patch({ routeShown: true })
+      case 'tourOptimized': return optimizeTour()
+      case 'threadsOpen': return patch({ over: true })
+      case 'calendarAdded': return patch({ calendarAdds: ws.calendarAdds + 1 })
+      case 'mapsMenuOpen': return patch({ mapsMenuOpen: true })
       case 'assistNewChat': return newChat()
       case 'assistExpanded': return patch({ expanded: true, over: true })
       case 'assistCollapsed': return patch({ expanded: false, over: false })
@@ -2070,11 +2569,12 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 
   // ── Tour engine ──
   function startTour(id: TourId) {
-    const first = TOUR_BY_ID[id].stops[0]
+    const first = TB[id].stops[0]
+    const view = mobile ? mobileViewFor(first.target) : null
     // Reset to a known state. Tours that need a fresh launcher or fresh quick replies
     // clear them so replays still have something to point at.
     const next: Workspace = {
-      ...ws, ...TOUR_RESET, ...first.enter,
+      ...ws, ...TOUR_RESET, ...view, ...first.enter,
       ...(id === 'assist' ? { assistMsgs: [] } : null),
       ...(id === 'sample' ? { chipsUsed: [] } : null),
       // Replays start with no tours, as the New tour stop says.
@@ -2092,27 +2592,34 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const dropSampleInvites = useCallback(() => setWs(s => ({ ...s, invites: s.invites.filter(i => !i.sample) })), [])
   const goStop = useCallback((i: number) => {
     if (!active) return
-    const t = TOUR_BY_ID[active.id]
+    const t = TB[active.id]
     if (i >= t.stops.length) {
       setDone(d => ({ ...d, [active.id]: true }))
-      if (active.id === 'assist') patch({ sheet: null, expanded: false, over: false })
+      if (active.id === 'assist' || active.id === 'workspace') patch({ sheet: null, expanded: false, over: false })
       if (active.id === 'clients') dropSampleInvites()
+      if (active.id === 'schedule') patch({ mapsMenuOpen: false })
+      if (active.id === 'sample') patch({ chatOpen: false, chatExpanded: false })
       setActive(null)
+      if (TOURS.every(x => x.id === active.id || done[x.id])) {
+        hideList(`You’ve finished every tour. Choose Support in the ${mobile ? 'bottom bar' : 'left rail'} to replay any of them.`)
+        return
+      }
       setListOpen(true)
       setListFocus(k => k + 1)
       return
     }
     const enter = t.stops[i].enter
-    if (i < active.i) patch({ ...viewFor(t.stops[i].target, ws), ...enter })
-    else if (enter) patch(enter)
+    const phone = mobile ? mobileViewFor(t.stops[i].target) : null
+    if (i < active.i) patch({ ...viewFor(t.stops[i].target, ws), ...phone, ...enter })
+    else if (enter || phone) patch({ ...phone, ...enter })
     // Arriving by Back on an action stop whose condition is already met must not auto-advance.
     backedTo.current = i < active.i ? `${active.id}:${i}` : null
     setActive({ id: active.id, i })
-  }, [active, patch, dropSampleInvites, ws])
-  const endTour = useCallback(() => { if (active?.id === 'assist') patch({ sheet: null, expanded: false, over: false }); if (active?.id === 'clients') dropSampleInvites(); setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [active, patch, dropSampleInvites])
-  const openTours = () => { setActive(null); setListGone(false); setListOpen(true); setListFocus(k => k + 1) }
+  }, [active, patch, dropSampleInvites, ws, mobile, done])
+  const endTour = useCallback(() => { if (active?.id === 'assist' || active?.id === 'workspace') patch({ sheet: null, expanded: false, over: false }); if (active?.id === 'clients') dropSampleInvites(); if (active?.id === 'schedule') patch({ mapsMenuOpen: false }); if (active?.id === 'sample') patch({ chatOpen: false, chatExpanded: false }); setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [active, patch, dropSampleInvites])
+  const openTours = () => { setActive(null); setListGone(false); setListNote(''); setListOpen(true); setListFocus(k => k + 1) }
 
-  const stop = active ? TOUR_BY_ID[active.id].stops[active.i] : null
+  const stop = active ? TB[active.id].stops[active.i] : null
   const met = stop?.until ? isMet(stop.until, ws, base) : false
   // Action stops advance on their own once the real action happens.
   useEffect(() => {
@@ -2138,7 +2645,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 
   const coachmark = active && !locked ? (
     <Coachmark
-      tour={TOUR_BY_ID[active.id]} index={active.i} dim={dimDuringTours} conditionMet={met}
+      tour={TB[active.id]} index={active.i} dim={dimDuringTours} conditionMet={met}
       onNext={() => goStop(active.i + 1)} onBack={() => goStop(active.i - 1)} onEnd={endTour}
       onShowMe={() => { if (stop?.until) doIt(stop.until); if (stop?.manual) goStop(active.i + 1) }}
     />
@@ -2146,7 +2653,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 
   // While a modal is open, the tour renders through it (see `ModalCoachmark`).
   const modalCoachmark = coachmark && stop && active ? (
-    <ModalCoachmark announce={`${TOUR_BY_ID[active.id].title}, step ${active.i + 1} of ${TOUR_BY_ID[active.id].stops.length}: ${stop.title}. ${stop.body}${stop.hint ? ` ${stop.hint}.` : ''}`}>
+    <ModalCoachmark announce={`${TB[active.id].title}, step ${active.i + 1} of ${TB[active.id].stops.length}: ${stop.title}. ${stop.body}${stop.hint ? ` ${stop.hint}.` : ''}`}>
       {coachmark}
     </ModalCoachmark>
   ) : null
@@ -2160,10 +2667,55 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   // The first tour in the tab is selected until the agent picks another.
   const tabTours = toursFor(ws.tours, ws.tourTab)
   const shownTour = tabTours.find(t => t.id === ws.tourId) ?? tabTours[0]
+  const onActivityPage = ws.route === 'clients' && ws.detailTab === 'activity'
   const title = ws.route === 'clients' ? SAMPLE_CLIENT.name : ws.route === 'search' ? 'Search' : shownTour?.client ?? 'Tours'
 
   return (
-    <div className={css({ position: 'relative', display: 'flex', alignItems: 'stretch', bg: 'bg.base', overflow: 'hidden' })} style={{ minWidth: '1024px', height: '100vh' }}>
+    <div className={css({ position: 'relative', display: 'flex', alignItems: 'stretch', bg: 'bg.base', overflow: 'hidden' })} style={{ minWidth: mobile ? 0 : '1024px', height: mobile ? '100dvh' : '100vh' }}>
+      {mobile ? (
+      <div className={css({ position: 'relative', display: 'flex', flexDirection: 'column', flex: '1', minW: '0', h: '100%' })}>
+        <main className={css({ flex: '1', minH: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' })}>
+          {ws.route === 'clients' && (ws.clientView === 'list' ? (
+            <Subnav
+              variant="clients" mobile shown activeId={SAMPLE_CLIENT.id} onClose={() => {}}
+              tab={ws.clientTab} onTab={clientTab => patch({ clientTab })} clients={roster} tours={ws.tours}
+              tourTab={ws.tourTab} onTourTab={tourTab => patch({ tourTab, tourId: null })} tourId={shownTour?.id}
+              onPickTour={tourId => patch({ tourId })} onPickClient={() => patch({ clientView: 'feed' })} onInvite={openInvite}
+            />
+          ) : (
+            <>
+              <MobileFeedHeader
+                feed={<FeedPopover open={ws.feedMenuOpen} onOpenChange={feedMenuOpen => patch({ feedMenuOpen })} onChat={openChat} />}
+                activity={ws.detailTab === 'activity'} onBack={() => patch({ clientView: 'list', feedMenuOpen: false })}
+                onActivity={() => patch({ detailTab: ws.detailTab === 'activity' ? 'homes' : 'activity' })}
+              />
+              <ClientsScreen mobile detailTab={ws.detailTab} onDetailTab={detailTab => patch({ detailTab })}
+                selected={ws.selected} onSelect={selectHome} onAddToTour={openTourModal} onClear={() => patch({ selected: [] })}
+                onAddSearch={() => patch({ route: 'search' })} />
+            </>
+          ))}
+          {ws.route === 'search' && <MobileSearch />}
+          {ws.route === 'tours' && (ws.tourView === 'list' || !shownTour ? (
+            <Subnav
+              variant="tours" mobile shown onClose={() => {}}
+              tab={ws.clientTab} onTab={clientTab => patch({ clientTab })} clients={roster} tours={ws.tours}
+              tourTab={ws.tourTab} onTourTab={tourTab => patch({ tourTab, tourId: null })} tourId={undefined}
+              onPickTour={tourId => patch({ tourId, tourView: 'detail' })} onInvite={openInvite}
+            />
+          ) : (
+            <MobileTourDetail
+              tour={shownTour} pane={ws.tourPane} routeShown={ws.routeShown}
+              mapsOpen={ws.mapsMenuOpen} onMapsOpen={mapsMenuOpen => patch({ mapsMenuOpen })} onCalendar={() => patch({ calendarAdds: ws.calendarAdds + 1 })}
+              onPane={tourPane => patch({ tourPane })} onRoute={routeShown => patch({ routeShown })}
+              onBack={() => patch({ tourView: 'list' })} onReorder={homes => setStops(shownTour.id, homes)} onOptimize={optimizeTour}
+            />
+          ))}
+        </main>
+        <BottomNav route={ws.route} chatOpen={ws.chatOpen} onNavigate={route => patch({ route, chatOpen: false, sheet: null })} onChat={openChat} onSupport={openTours} />
+        {!ws.sheet && !ws.chatOpen && <MobileFab onClick={() => openSheet('assist')} />}
+      </div>
+      ) : (
+        <>
       <NavRail active={ws.route} onNavigate={route => patch({ route })} onSupport={openTours} onChat={openChat} />
 
       {subnavVariant !== null && (
@@ -2178,9 +2730,30 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       <div className={vstack({ alignItems: 'stretch', gap: '0', flex: '1', minW: '0' })} style={{ marginRight: mainMarginRight, transition: `margin-right 220ms ${EASE}` }}>
         <MainHeader
           title={title}
-          lead={ws.route === 'search' ? <div className={css({ w: '[340px]', flexShrink: '0' })}><SearchField flush placeholder="City, neighborhood, address, school…" ariaLabel="Search homes" /></div> : undefined}
+          lead={ws.route === 'search' ? <div className={css({ w: '[340px]', flexShrink: '0' })}><SearchField flush placeholder="City, neighborhood, address, school…" ariaLabel="Search homes" /></div>
+            : onActivityPage ? (
+              <div className={hstack({ gap: '300', minW: '0', flex: '[1 1 0]' })}>
+                <CircleButton label="Back to feed" onClick={() => patch({ detailTab: 'homes' })}><IconArrowLeft size={2} /></CircleButton>
+                <h1 className={css({ m: '0', fontWeight: 'semibold', color: 'text.base', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' })}
+                  style={{ fontFamily: DISPLAY_FONT, fontSize: 24, lineHeight: '28px', letterSpacing: '-0.02em' }}>{SAMPLE_CLIENT.name} - Client Activity</h1>
+              </div>
+            ) : undefined}
           bare={ws.route === 'tours'}
-          secondary={ws.route === 'tours' ? <Button styleType="Secondary" size="sm" startIcon={<IconExport size={16} />}>Export</Button> : undefined}
+          moreItems={ws.route === 'tours' ? [{ label: 'Export' }, { label: 'Draft a text' }] : undefined}
+          items={ws.route === 'clients' ? FOLD_ITEMS.slice(0, 1) : undefined}
+          secondary={ws.route === 'tours' ? (
+            <span data-tour="tourmaps" className={css({ display: 'flex' })}>
+              <OpenInMenu stops={shownTour?.homes ?? []} open={ws.mapsMenuOpen && !!shownTour} onOpenChange={mapsMenuOpen => patch({ mapsMenuOpen })}>
+                <Button styleType="Secondary" size="sm" startIcon={<IconExport size={16} />} onClick={() => patch({ mapsMenuOpen: !ws.mapsMenuOpen })}>Open in</Button>
+              </OpenInMenu>
+            </span>
+          )
+            : onActivityPage ? (
+              <span className={hstack({ gap: '300' })}>
+                <Initials initials={SAMPLE_CLIENT.initials} size={36} fontSize={12} />
+                <Button styleType="Secondary" size="sm" startIcon={<IconSearch size={16} />}>Edit searches</Button>
+              </span>
+            ) : undefined}
           below={ws.route === 'search' ? <SearchFilters /> : undefined}
           onAsk={() => openSheet('assist')}
           panelOpen={assistOpen}
@@ -2193,11 +2766,14 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
           primary={ws.route === 'search' ? (
             <Button styleType="Primary" size="sm">Save search</Button>
           ) : ws.route === 'tours' ? (
-            <Button styleType="Primary" size="sm" startIcon={<IconCalendar size={16} />}>Add to calendar</Button>
+            <span data-tour="tourcalendar" className={css({ display: 'flex' })}>
+              <Button styleType="Primary" size="sm" startIcon={<IconCalendar size={16} />}
+                onClick={() => { patch({ calendarAdds: ws.calendarAdds + 1 }); flash('Added to your calendar.') }}>Add to calendar</Button>
+            </span>
           ) : ws.route === 'clients' ? (
             <span data-tour="activitytab" className={css({ display: 'flex' })}>
-              <Button styleType="Primary" size="sm" startIcon={<IconHeart size={16} />} aria-pressed={ws.detailTab === 'activity'}
-                onClick={() => patch({ detailTab: ws.detailTab === 'activity' ? 'homes' : 'activity' })}>Client activity</Button>
+              <Button styleType="Primary" size="sm" startIcon={onActivityPage ? <IconClients size={16} /> : <IconClientActivity size={16} />}
+                onClick={() => patch({ detailTab: onActivityPage ? 'homes' : 'activity' })}>{onActivityPage ? 'View feed' : 'Client activity'}</Button>
             </span>
           ) : undefined}
         />
@@ -2208,9 +2784,13 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
               onAddSearch={() => patch({ route: 'search' })} />
           )}
           {ws.route === 'search' && <TourMap count={4} label="Map of homes for sale" fill />}
-          {ws.route === 'tours' && <ToursScreen tour={shownTour} />}
+          {ws.route === 'tours' && <ToursScreen tour={shownTour} routeShown={ws.routeShown} onRoute={routeShown => patch({ routeShown })} onOptimize={optimizeTour}
+            onReorder={homes => shownTour && setStops(shownTour.id, homes)} />}
         </main>
       </div>
+
+        </>
+      )}
 
       <AssistantPanel
         msgs={ws.assistMsgs}
@@ -2225,18 +2805,28 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
         onToggleExpand={toggleExpand}
         onNewChat={newChat}
         onClose={closeSheet}
+        mobile={mobile}
       />
 
-      {!welcome && !listGone && (
+      {!welcome && !listGone && !(mobile && (active || ws.sheet || ws.chatOpen)) && (
         <TourList
+          tours={mobile ? MOBILE_TOURS : TOURS} mobile={mobile}
+          lift={ws.route === 'search' ? 100 : ws.route === 'tours' && ws.tourView === 'detail' ? 60 : 0}
           expanded={listOpen && !active} done={done} corner={listCorner} sheetWidth={listOffset}
           focusKey={listFocus}
           onStart={startTour} onMinimize={() => setListOpen(false)} onExpand={() => { setActive(null); setListOpen(true) }}
-          onDismiss={() => setListGone(true)}
+          onDismiss={() => hideList(`Tour list hidden. Choose Support in the ${mobile ? 'bottom bar' : 'left rail'} to see it again.`)}
         />
       )}
+      {listNote && (
+        <p role="status" className={css({ position: 'fixed', zIndex: '[900]', m: '0', display: 'flex', alignItems: 'center', gap: '200', pl: '400', pr: '200', py: '200', bg: 'bg.inverse', color: 'text.inverse', borderRadius: '300', boxShadow: 'float' })}
+          style={mobile ? { left: 12, right: 12, bottom: 64 + 12, fontSize: 13 } : { right: 24, bottom: 24, maxWidth: 360, fontSize: 13 }}>
+          <span className={css({ flex: '1' })}>{listNote}</span>
+          <CircleButton label="Close message" size={28} color="#FFFFFF" onClick={() => setListNote('')}><IconClose size={12} /></CircleButton>
+        </p>
+      )}
 
-      <ChatWindow open={ws.chatOpen} right={dockedWidth + 24} expanded={ws.chatExpanded}
+      <ChatWindow mobile={mobile} open={ws.chatOpen} right={dockedWidth + 24} expanded={ws.chatExpanded}
         onToggleExpand={() => patch({ chatExpanded: !ws.chatExpanded })} onClose={() => patch({ chatOpen: false, chatExpanded: false })}
         chat={ws.chat} chipsUsed={ws.chipsUsed} onChip={sendChip} onSend={sendChat} />
 
