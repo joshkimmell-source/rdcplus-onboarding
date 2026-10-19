@@ -15,6 +15,10 @@ checklist, the agent learns in the real workspace through coachmark tours.
 - `src/Onboarding.tsx`: welcome dialog and the floating tour list / pill
 - `src/Shell.tsx`: the full `client-rdc-plus` shell (NavRail, Subnav, MainHeader + ActionBar, Clients screen with tiles / pills / `PropertyCard` feed, docked RealAssist™ AI panel with launcher, transcript, and threads) plus the tour state machine
 
+## Tracking (user tests)
+
+`src/telemetry.ts` logs session, tour and step events to a Google Sheet when built with `VITE_TRACKING_URL` / `VITE_TRACKING_TOKEN` (git-ignored `.env.local`). It also sets the URL hash (`#start-`, `#done-`, `#exit-` plus the tour id) for UserTesting Completion URLs. Setup, events and the summary tabs are in `tracking/README.md`; the test plan is `docs/user-test-plan.md`. Typed text is never recorded.
+
 ## Phones (under 768px)
 
 `useIsMobile` (`src/viewport.ts`) switches `Shell` to a one-pane-at-a-time layout: bottom nav (`data-tour="rail"`),

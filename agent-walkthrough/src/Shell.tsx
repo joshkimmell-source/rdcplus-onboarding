@@ -63,6 +63,7 @@ import {
 } from './tours'
 import { Coachmark } from './Coachmark'
 import { useIsMobile, useIsNarrowDesktop, useViewportWidth } from './viewport'
+import { track, trackOnce, setLayout, setTourHash } from './telemetry'
 import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboarding'
 
 // ─── What this prototype is ───────────────────────────────────────────────────
@@ -2576,9 +2577,48 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     }
   }
 
+  // ── Session tracking (see telemetry.ts and tracking/README.md) ──
+  useEffect(() => { setLayout(mobile ? 'mobile' : 'desktop') }, [mobile])
+  useEffect(() => { if (!locked) trackOnce('session_start', { referrer: document.referrer ? 'yes' : 'no' }) }, [locked])
+  type Move = 'start' | 'next' | 'back' | 'auto' | 'show_me'
+  const pendingMove = useRef<Move>('start')
+  // What happened on the step on screen, and across the tour, for step_exit and tour_complete.
+  const trail = useRef({ enteredAt: 0, blocked: 0, showMe: false, hint: false })
+  const run = useRef({ startedAt: 0, steps: 0, back: 0, showMe: 0, blocked: 0, stuck: 0, long: 0 })
+  const stepInfo = (tourId: TourId, i: number) => {
+    const t = TB[tourId]
+    const st = t.stops[i]
+    return { tour: tourId, step: i + 1, steps: t.stops.length, stepId: `${tourId}:${i + 1}:${st.target}`, title: st.title }
+  }
+  const leaveStep = (reason: string) => {
+    if (!active) return
+    const st = trail.current
+    run.current.blocked += st.blocked
+    track('step_exit', { ...stepInfo(active.id, active.i), reason, dwellMs: Date.now() - st.enteredAt, blocked: st.blocked, hint: st.hint, showMe: st.showMe })
+  }
+  const runTotals = () => ({ totalMs: Date.now() - run.current.startedAt, stepsViewed: run.current.steps, back: run.current.back, showMeClicks: run.current.showMe, blocked: run.current.blocked, stuck: run.current.stuck, longDwell: run.current.long })
+  // Each step on screen: log the view, and flag a step the participant seems stuck on.
+  useEffect(() => {
+    if (!active) return
+    const info = stepInfo(active.id, active.i)
+    const st = TB[active.id].stops[active.i]
+    trail.current = { enteredAt: Date.now(), blocked: 0, showMe: false, hint: !!(st.until && st.hint) }
+    run.current.steps += 1
+    track('step_view', { ...info, how: pendingMove.current, action: !!st.until })
+    const flag = window.setTimeout(() => {
+      if (st.until) { run.current.stuck += 1; track('stuck', { ...info, afterMs: 20000 }) }
+      else { run.current.long += 1; track('long_dwell', { ...info, afterMs: 45000 }) }
+    }, st.until ? 20000 : 45000)
+    return () => window.clearTimeout(flag)
+  }, [active?.id, active?.i]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Tour engine ──
-  function startTour(id: TourId) {
+  function startTour(id: TourId, source: 'list' | 'welcome' = 'list') {
     const first = TB[id].stops[0]
+    pendingMove.current = 'start'
+    run.current = { startedAt: Date.now(), steps: 0, back: 0, showMe: 0, blocked: 0, stuck: 0, long: 0 }
+    track('tour_start', { tour: id, source, steps: TB[id].stops.length })
+    setTourHash('start', id)
     const view = mobile ? mobileViewFor(first.target) : null
     // Reset to a known state. Tours that need a fresh launcher or fresh quick replies
     // clear them so replays still have something to point at.
@@ -2599,10 +2639,15 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const backedTo = useRef<string | null>(null)
   // The sample invite is only there to show the Invited list; a real one stays.
   const dropSampleInvites = useCallback(() => setWs(s => ({ ...s, invites: s.invites.filter(i => !i.sample) })), [])
-  const goStop = useCallback((i: number) => {
+  const goStop = useCallback((i: number, how: Move = 'next') => {
     if (!active) return
     const t = TB[active.id]
+    pendingMove.current = how
+    if (how === 'back') run.current.back += 1
+    leaveStep(i >= t.stops.length ? 'complete' : how)
     if (i >= t.stops.length) {
+      track('tour_complete', { tour: active.id, steps: t.stops.length, ...runTotals() })
+      setTourHash('done', active.id)
       setDone(d => ({ ...d, [active.id]: true }))
       if (active.id === 'assist' || active.id === 'workspace') patch({ sheet: null, expanded: false, over: false })
       if (active.id === 'clients') dropSampleInvites()
@@ -2625,14 +2670,14 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     backedTo.current = i < active.i ? `${active.id}:${i}` : null
     setActive({ id: active.id, i })
   }, [active, patch, dropSampleInvites, ws, mobile, done])
-  const endTour = useCallback(() => { if (active?.id === 'assist' || active?.id === 'workspace') patch({ sheet: null, expanded: false, over: false }); if (active?.id === 'clients') dropSampleInvites(); if (active?.id === 'schedule') patch({ mapsMenuOpen: false }); if (active?.id === 'sample') patch({ chatOpen: false, chatExpanded: false }); setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [active, patch, dropSampleInvites])
-  const openTours = () => { setActive(null); setListGone(false); setListNote(''); setListOpen(true); setListFocus(k => k + 1) }
+  const endTour = useCallback(() => { if (active) { leaveStep('end'); track('tour_abandon', { ...stepInfo(active.id, active.i), ...runTotals() }); setTourHash('exit', active.id) } if (active?.id === 'assist' || active?.id === 'workspace') patch({ sheet: null, expanded: false, over: false }); if (active?.id === 'clients') dropSampleInvites(); if (active?.id === 'schedule') patch({ mapsMenuOpen: false }); if (active?.id === 'sample') patch({ chatOpen: false, chatExpanded: false }); setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [active, patch, dropSampleInvites])
+  const openTours = () => { track('list_open_support'); setActive(null); setListGone(false); setListNote(''); setListOpen(true); setListFocus(k => k + 1) }
 
   const stop = active ? TB[active.id].stops[active.i] : null
   const met = stop?.until ? isMet(stop.until, ws, base) : false
   // Action stops advance on their own once the real action happens.
   useEffect(() => {
-    if (active && stop?.until && !stop.manual && met && backedTo.current !== `${active.id}:${active.i}`) goStop(active.i + 1)
+    if (active && stop?.until && !stop.manual && met && backedTo.current !== `${active.id}:${active.i}`) goStop(active.i + 1, trail.current.showMe ? 'show_me' : 'auto')
   }, [active, stop, met, goStop])
 
   // On a narrow desktop the subnav and the RealAssist panel can't share the screen: opening one
@@ -2666,8 +2711,16 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const coachmark = active && !locked ? (
     <Coachmark
       tour={TB[active.id]} index={active.i} dim={dimDuringTours} conditionMet={met}
-      onNext={() => goStop(active.i + 1)} onBack={() => goStop(active.i - 1)} onEnd={endTour}
-      onShowMe={() => { if (stop?.until) doIt(stop.until); if (stop?.manual) goStop(active.i + 1) }}
+      onNext={() => goStop(active.i + 1)} onBack={() => goStop(active.i - 1, 'back')} onEnd={endTour}
+      onShowMe={() => {
+        trail.current.showMe = true
+        run.current.showMe += 1
+        track('show_me', stepInfo(active.id, active.i))
+        if (stop?.until) doIt(stop.until)
+        if (stop?.manual) goStop(active.i + 1, 'show_me')
+      }}
+      onBlocked={() => { trail.current.blocked += 1 }}
+      onTargetMissing={() => track('target_missing', stepInfo(active.id, active.i))}
     />
   ) : null
 
@@ -2836,8 +2889,8 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
           lift={ws.route === 'search' ? 100 : ws.route === 'tours' && ws.tourView === 'detail' ? 60 : 0}
           expanded={listOpen && !active} done={done} corner={listCorner} sheetWidth={listOffset}
           focusKey={listFocus}
-          onStart={startTour} onMinimize={() => setListOpen(false)} onExpand={() => { setActive(null); setListOpen(true) }}
-          onDismiss={() => hideList(`Tour list hidden. Choose Support in the ${mobile ? 'bottom bar' : 'left rail'} to see it again.`)}
+          onStart={id => startTour(id, 'list')} onMinimize={() => { track('list_minimize'); setListOpen(false) }} onExpand={() => { track('list_expand'); setActive(null); setListOpen(true) }}
+          onDismiss={() => { track('list_dismiss'); hideList(`Tour list hidden. Choose Support in the ${mobile ? 'bottom bar' : 'left rail'} to see it again.`) }}
         />
       )}
       {listNote && (
@@ -2868,8 +2921,8 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 
       <WelcomeDialog
         open={welcome && !locked} agent={AGENT_PROFILE}
-        onExplore={() => { setWelcome(false); setListOpen(true) }}
-        onTour={() => startTour(TOURS[0].id)}
+        onExplore={() => { track('welcome_choice', { choice: 'explore' }); setWelcome(false); setListOpen(true) }}
+        onTour={() => { track('welcome_choice', { choice: 'tour' }); startTour(TOURS[0].id, 'welcome') }}
       />
     </div>
   )

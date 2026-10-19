@@ -78,10 +78,12 @@ function placeMobile(stop: Stop, r: Rect | null, h: number, vw: number, vh: numb
 }
 
 export function Coachmark({
-  tour, index, dim, conditionMet, onNext, onBack, onShowMe, onEnd,
+  tour, index, dim, conditionMet, onNext, onBack, onShowMe, onEnd, onBlocked, onTargetMissing,
 }: {
   tour: Tour; index: number; dim: boolean; conditionMet: boolean
   onNext: () => void; onBack: () => void; onShowMe: () => void; onEnd: () => void
+  // Tracking: a click on the dimmed page, and a target that never appeared.
+  onBlocked?: () => void; onTargetMissing?: () => void
 }) {
   const stop = tour.stops[index]
   const n = tour.stops.length
@@ -127,6 +129,13 @@ export function Coachmark({
     return () => document.removeEventListener('keydown', onKey)
   }, [onEnd])
 
+  // Tracking: the spotlight target never showed up (a defect, not the participant's doing).
+  useEffect(() => {
+    if (m.rect) return
+    const id = window.setTimeout(() => onTargetMissing?.(), 1200)
+    return () => window.clearTimeout(id)
+  }, [m.rect === null, tour.id, index]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const action = !!stop.until
   const showNext = !action || !!stop.manual || conditionMet
   const nextDisabled = !!stop.manual && !conditionMet
@@ -147,13 +156,13 @@ export function Coachmark({
       {/* Click blockers around the cut-out (or the whole page while the target is missing). */}
       {spot ? (
         <>
-          <div className={blocker} style={{ top: 0, left: 0, right: 0, height: spot.top }} />
-          <div className={blocker} style={{ top: spot.top + spot.height, left: 0, right: 0, bottom: 0 }} />
-          <div className={blocker} style={{ top: spot.top, left: 0, width: spot.left, height: spot.height }} />
-          <div className={blocker} style={{ top: spot.top, left: spot.left + spot.width, right: 0, height: spot.height }} />
+          <div className={blocker} onPointerDown={onBlocked} style={{ top: 0, left: 0, right: 0, height: spot.top }} />
+          <div className={blocker} onPointerDown={onBlocked} style={{ top: spot.top + spot.height, left: 0, right: 0, bottom: 0 }} />
+          <div className={blocker} onPointerDown={onBlocked} style={{ top: spot.top, left: 0, width: spot.left, height: spot.height }} />
+          <div className={blocker} onPointerDown={onBlocked} style={{ top: spot.top, left: spot.left + spot.width, right: 0, height: spot.height }} />
         </>
       ) : (
-        <div className={blocker} style={{ inset: 0, background: dim ? 'rgba(26,24,22,0.5)' : undefined }} />
+        <div className={blocker} onPointerDown={onBlocked} style={{ inset: 0, background: dim ? 'rgba(26,24,22,0.5)' : undefined }} />
       )}
 
       {/* Spotlight — a rounded cut-out whose giant shadow is the scrim. */}

@@ -8,6 +8,7 @@
     "dev:walkthrough": "npm --prefix agent-walkthrough run dev",
     "dev:consumer": "npm --prefix consumer run dev",
     "build": "npm --prefix agent run build && npm --prefix agent-walkthrough run build && npm --prefix consumer run build",
-    "deploy": "sh scripts/deploy.sh"
+    "deploy": "sh scripts/deploy.sh",
+    "deploy:test": "DEPLOY_APPS=agent-walkthrough DEPLOY_REMOTE=https://github.com/rdcplus-test/rdcplus-test.github.io.git sh scripts/deploy.sh"
   }
 }
