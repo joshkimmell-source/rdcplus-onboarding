@@ -28,3 +28,11 @@
   --colors-status-success: #1DD355;
   color: var(--colors-text-base);
 }
+
+/* UserTesting adds its task panel to <body>. Haven's Modal (Radix) sets `pointer-events: none` on
+   <body> while a dialog is open, which made that panel unclickable (no "Start task" while the
+   first-name or welcome dialog was up). Keep <body> clickable. The dialog's own overlay still
+   blocks the prototype behind it, and the dialog sets its own pointer events. */
+body {
+  pointer-events: auto !important;
+}
