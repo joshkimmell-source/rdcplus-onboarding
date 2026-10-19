@@ -17,7 +17,7 @@ checklist, the agent learns in the real workspace through coachmark tours.
 
 ## Tracking (user tests)
 
-`src/telemetry.ts` logs session, tour and step events to a Google Sheet when built with `VITE_TRACKING_URL` / `VITE_TRACKING_TOKEN` (git-ignored `.env.local`). It also sets the URL hash (`#start-`, `#done-`, `#exit-` plus the tour id) for UserTesting Completion URLs. Setup, events and the summary tabs are in `tracking/README.md`; the test plan is `docs/user-test-plan.md`. Typed text is never recorded.
+`src/telemetry.ts` logs session, tour and step events to a Google Sheet through a Google Form when built with `VITE_TRACKING_FORM_URL` / `VITE_TRACKING_FORM_ENTRY` / `VITE_TRACKING_TOKEN` (git-ignored `.env.local`). It also sets the URL hash (`#start-`, `#done-`, `#exit-` plus the tour id) for UserTesting Completion URLs. Setup, events and the summary tabs are in `tracking/README.md`; the test plan is `docs/user-test-plan.md`. Typed text is never recorded.
 
 ## Phones (under 768px)
 
@@ -45,6 +45,8 @@ Kept the shell's structure and primitives; added only what the tours point at:
 - ActionBar fold: re-measures on every reset and after web fonts load, so labels shed when a panel opens
 
 ## Product rules
+
+- The way in is `NameGate` (`src/NameGate.tsx`): it says this is a test prototype with made-up data and asks for a first name. `src/agent.ts` turns "Josh" into the agent "Josh Agent" (initials JA) wherever the agent appears, including the greeting in Alex's first chat message. The name stays in the browser tab; telemetry never sends it. There is no password.
 
 - The agent signs in through their MLS. Profile, license, and service area are shown read-only ("From your MLS"). No forms during onboarding.
 - Alex Rivera is a sample client, labeled everywhere. Nothing sent to Alex reaches a real person.
