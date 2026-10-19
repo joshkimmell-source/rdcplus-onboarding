@@ -32,7 +32,7 @@ We are testing the five in-product tours, not the workspace itself.
 1. Build and publish the prototype with tracking turned on (`tracking/README.md`, steps 1 and 2, then `npm run deploy:test`).
 2. Open the published URL yourself and confirm `session_start` appears on the Sheet's `Events` tab.
 3. **Check the Completion URLs in a UserTesting preview** (below). They work by changing the URL hash on the same page, and UserTesting may not treat that as arriving at the URL. If a task does not complete, tell me and we switch to real completion pages.
-4. Add the prototype password to the intro task (it is the password in the app's password screen; it is not written in this file).
+4. There is no password. The first screen says the prototype is for testing and none of the data is real, then asks for a first name, which becomes "<First> Agent" (initials included) everywhere the agent appears. Tell participants to use their first name (any name works).
 5. Use these Start URLs so sessions are labeled by test: desktop `https://rdcplus-test.github.io/agent-walkthrough/?pid=ut-desktop`, mobile `https://rdcplus-test.github.io/agent-walkthrough/?pid=ut-mobile`.
 
 ## 4. Completion URLs
@@ -79,7 +79,7 @@ Each activity ends with the same two follow-ups, then its own probes.
 
 **Intro to read aloud:** "Imagine you are a real estate agent who has just signed up for Realtor.com+, a tool for working with your clients. You signed in with your MLS, so your profile is already set up. Please think out loud as you go. We are testing the product, not you."
 
-**Task:** "Go to the prototype link and enter the password. When a dialog appears, *do not click anything yet*. Tell us what you think this is and what you expect each button to do. Then choose the option you would normally choose."
+**Task:** "Go to the prototype link and read the first screen. Enter your first name to continue. When the next dialog appears, *do not click anything yet*. Tell us what you think this is and what you expect each button to do. Then choose the option you would normally choose."
 
 **Watch for**
 - Which option they pick (`welcome_choice` in the Sheet: *tour* or *explore*) and whether they hesitate.

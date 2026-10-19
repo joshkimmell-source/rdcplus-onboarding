@@ -1,12 +1,17 @@
-// Session tracking for user testing. Events go to a Google Sheet through an Apps Script web app
-// (see tracking/README.md). Nothing is sent unless VITE_TRACKING_URL is set at build time, and
+// Session tracking for user testing. Events are submitted to a Google Form that has no sign-in
+// requirement; a script on the Form's response Sheet turns each submission into event rows
+// (see tracking/README.md). Nothing is sent unless the Form is configured at build time, and
 // `?notrack` turns it off for a session. Typed text (invite form, chat) is never recorded.
 
-const URL = import.meta.env.VITE_TRACKING_URL as string | undefined
+// The Form's response address (…/formResponse) and the id of its one long-answer field (entry.123…).
+const FORM_URL = import.meta.env.VITE_TRACKING_FORM_URL as string | undefined
+const FORM_ENTRY = import.meta.env.VITE_TRACKING_FORM_ENTRY as string | undefined
+// Submissions without this token are ignored by the Sheet script. It ships in the bundle, so it
+// only keeps stray traffic out.
 const TOKEN = (import.meta.env.VITE_TRACKING_TOKEN as string | undefined) ?? ''
 
 const params = new URLSearchParams(window.location.search)
-const enabled = !!URL && !params.has('notrack')
+const enabled = !!FORM_URL && !!FORM_ENTRY && !params.has('notrack')
 // Optional label for the participant, e.g. ?pid=ut-07 on the Start URL.
 const pid = params.get('pid') ?? ''
 
@@ -33,13 +38,16 @@ let timer: number | undefined
 export function setLayout(next: Layout) { layout = next }
 
 function send(events: Record<string, unknown>[], beacon: boolean) {
-  const body = JSON.stringify({ token: TOKEN, events })
-  // text/plain keeps this a "simple" request, so Apps Script needs no CORS preflight.
+  const body = new URLSearchParams({ [FORM_ENTRY!]: JSON.stringify({ token: TOKEN, events }) }).toString()
+  // A plain form post is a "simple" request, so no CORS preflight; the response is opaque and ignored.
   if (beacon && navigator.sendBeacon) {
-    navigator.sendBeacon(URL!, new Blob([body], { type: 'text/plain' }))
+    navigator.sendBeacon(FORM_URL!, new Blob([body], { type: 'application/x-www-form-urlencoded' }))
     return
   }
-  fetch(URL!, { method: 'POST', mode: 'no-cors', keepalive: true, headers: { 'Content-Type': 'text/plain' }, body }).catch(() => {})
+  fetch(FORM_URL!, {
+    method: 'POST', mode: 'no-cors', keepalive: true,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body,
+  }).catch(() => {})
 }
 
 export function flush(beacon = false) {

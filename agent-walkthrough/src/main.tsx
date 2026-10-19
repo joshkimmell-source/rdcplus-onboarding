@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import Shell from './Shell'
-import PasswordGate from './PasswordGate'
+import NameGate from './NameGate'
 import './index.css'
 
 // Dev-only switches for comparing treatments (not product controls):
@@ -13,8 +13,8 @@ const listCorner = params.get('corner') === 'left' ? 'bottom-left' : 'bottom-rig
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <PasswordGate>
+    <NameGate>
       {locked => <Shell locked={locked} dimDuringTours={dimDuringTours} listCorner={listCorner} />}
-    </PasswordGate>
+    </NameGate>
   </React.StrictMode>
 )

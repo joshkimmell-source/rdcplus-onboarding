@@ -64,6 +64,7 @@ import {
 import { Coachmark } from './Coachmark'
 import { useIsMobile, useIsNarrowDesktop, useViewportWidth } from './viewport'
 import { track, trackOnce, setLayout, setTourHash } from './telemetry'
+import { AGENT } from './agent'
 import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboarding'
 
 // ─── What this prototype is ───────────────────────────────────────────────────
@@ -125,10 +126,7 @@ const PANEL_PX = 420
 // ─── Sample data ──────────────────────────────────────────────────────────────
 
 // Profile, license, and service area come from the agent's MLS sign-in.
-const AGENT = { name: 'Georgia Booth', initials: 'GB', brokerage: 'Brightwater Realty Group' }
-const AGENT_PROFILE: Agent = {
-  ...AGENT, firstName: 'Georgia', license: 'SA.0712458', serviceArea: 'Maple Heights, Cedar Park, Lakeview',
-}
+const agentProfile = (): Agent => ({ ...AGENT, license: 'SA.0712458', serviceArea: 'Maple Heights, Cedar Park, Lakeview' })
 
 type Client = {
   id: string
@@ -276,7 +274,7 @@ function nextSaturday(now = new Date()) {
 
 // ─── Sample-client chat ───────────────────────────────────────────────────────
 type ChatMsg = { from: 'agent' | 'client'; text: string; homeId?: string }
-const CHAT_OPENER: ChatMsg = { from: 'client', text: 'Hi Georgia, I’ve been saving homes around Maple Heights. Can you help me narrow it down?' }
+const CHAT_OPENER: ChatMsg = { from: 'client', text: 'Hi {{first}}, I’ve been saving homes around Maple Heights. Can you help me narrow it down?' }
 type Chip = { id: string; label: string; msg: ChatMsg; reply: string }
 const CHIPS: Chip[] = [
   { id: 'share', label: 'Share a home', msg: { from: 'agent', text: 'Here’s one I think you’ll like.', homeId: 'l1' }, reply: 'Love the kitchen. Can we see it in person?' },
@@ -1961,7 +1959,7 @@ function ChatThread({ chat, chipsUsed, onChip, onSend }: {
                   ? { maxWidth: 'min(322px, 88%)', borderRadius: '16px 16px 0 16px', boxShadow: '0 1px 4px rgba(43,43,43,0.16)', padding: '10px 18px', fontSize: 14, lineHeight: '22px' }
                   : { maxWidth: '88%', borderRadius: '16px 16px 16px 4px', padding: '10px 14px', fontSize: 13.5, lineHeight: 1.55 }}
               >
-                {m.text}
+                {m.text.replace('{{first}}', AGENT.firstName)}
                 {home && (
                   <div className={hstack({ gap: '300', mt: '200', p: '200', borderRadius: '200', bg: 'bg.base' })}>
                     <img src={home.photo} alt="" className={css({ w: '[56px]', h: '[42px]', borderRadius: '100', objectFit: 'cover', flexShrink: '0' })} />
@@ -2920,7 +2918,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       {ws.tourModal === 'closed' && !ws.inviteOpen && coachmark}
 
       <WelcomeDialog
-        open={welcome && !locked} agent={AGENT_PROFILE}
+        open={welcome && !locked} agent={agentProfile()}
         onExplore={() => { track('welcome_choice', { choice: 'explore' }); setWelcome(false); setListOpen(true) }}
         onTour={() => { track('welcome_choice', { choice: 'tour' }); startTour(TOURS[0].id, 'welcome') }}
       />
