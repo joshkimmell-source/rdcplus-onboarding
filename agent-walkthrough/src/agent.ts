@@ -30,4 +30,20 @@ export function hasAgentFirstName() {
   }
 }
 
+// The welcome dialog is for a new session only. A soft reload in the same tab keeps the name and
+// skips it; a new tab (a new participant) starts over.
+const WELCOME_KEY = 'rdcplus-onboarding:welcomeSeen'
+
+export function welcomeSeen() {
+  try { return sessionStorage.getItem(WELCOME_KEY) === '1' } catch { return false }
+}
+
+export function markWelcomeSeen() {
+  try { sessionStorage.setItem(WELCOME_KEY, '1') } catch { /* ignore */ }
+}
+
+export function forgetWelcomeSeen() {
+  try { sessionStorage.removeItem(WELCOME_KEY) } catch { /* ignore */ }
+}
+
 hasAgentFirstName()
