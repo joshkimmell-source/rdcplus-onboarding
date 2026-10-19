@@ -313,6 +313,16 @@ export function IconShare({ size = 15, ...p }: S) {
  * set had no heart, so this is drawn to the same 24-box grid as the other stroke icons.
  * `filled` is the saved state — the screenshot shows a solid heart on saved cards.
  */
+/** Client activity: a heart with a small bar chart in the center. */
+export function IconClientActivity({ size = 15, ...p }: S) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" strokeWidth={1.8} {...stroke} {...p}>
+      <path d="M12 20.6 3.9 12.5a5.1 5.1 0 0 1 0-7.2 5.1 5.1 0 0 1 7.2 0l.9.9.9-.9a5.1 5.1 0 0 1 7.2 0 5.1 5.1 0 0 1 0 7.2Z" />
+      <path d="M9.5 13.5v-2M12 13.5V9.5M14.5 13.5v-3" />
+    </svg>
+  )
+}
+
 export function IconHeart({ size = 15, filled = false, ...p }: S & { filled?: boolean }) {
   return (
     <svg
@@ -547,6 +557,15 @@ export function IconPanelClose({ size = 16, ...p }: S) {
       ) : (
         <path d="M6.5 3a1 1 0 0 1 2 0v18a1 1 0 1 1-2 0zm10.707 3.293a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 0 1.414l5 5a1 1 0 1 0 1.414-1.414L12.914 12l4.293-4.293a1 1 0 0 0 0-1.414" />
       )}
+    </svg>
+  )
+}
+
+/** Six-dot grip: the Move handle for reordering rows. */
+export function IconDrag({ size = 16, ...p }: S) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none" {...p}>
+      {[7, 12, 17].flatMap(y => [9, 15].map(x => <circle key={`${x}${y}`} cx={x} cy={y} r="1.6" />))}
     </svg>
   )
 }
