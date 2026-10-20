@@ -10,10 +10,19 @@ const FORM_ENTRY = import.meta.env.VITE_TRACKING_FORM_ENTRY as string | undefine
 // only keeps stray traffic out.
 const TOKEN = (import.meta.env.VITE_TRACKING_TOKEN as string | undefined) ?? ''
 
+// `?pid=` (a label for the participant, e.g. ?pid=ut-07 on the Start URL) and `?notrack` are kept
+// in sessionStorage, because the URL is replaced when a tour starts or finishes.
 const params = new URLSearchParams(window.location.search)
-const enabled = !!FORM_URL && !!FORM_ENTRY && !params.has('notrack')
-// Optional label for the participant, e.g. ?pid=ut-07 on the Start URL.
-const pid = params.get('pid') ?? ''
+function remembered(key: string, fromUrl: string | null) {
+  try {
+    if (fromUrl !== null) sessionStorage.setItem(`rdcplus-wt:${key}`, fromUrl)
+    return fromUrl ?? sessionStorage.getItem(`rdcplus-wt:${key}`) ?? ''
+  } catch {
+    return fromUrl ?? ''
+  }
+}
+const pid = remembered('pid', params.get('pid'))
+const enabled = !!FORM_URL && !!FORM_ENTRY && !(params.has('notrack') || remembered('notrack', params.has('notrack') ? '1' : null) === '1')
 
 const SID_KEY = 'rdcplus-wt:sid'
 function sessionId() {
@@ -82,8 +91,17 @@ export function trackOnce(name: string, props: Record<string, unknown> = {}) {
 window.addEventListener('pagehide', () => flush(true))
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(true) })
 
-// Completion URLs for UserTesting: the app sets the URL hash as a tour starts, finishes, or is
-// ended early. `…/agent-walkthrough/#done-schedule` is the Completion URL for that activity.
-export function setTourHash(kind: 'start' | 'done' | 'exit', tourId: string) {
-  window.location.hash = `${kind}-${tourId}`
+// Completion URLs for UserTesting. A tour's last step (Done) loads `<page>?done=<tour>`, a real page
+// navigation, which is what UserTesting's "Validation by URL" can see (an in-page hash change was
+// not detected). The session is kept in sessionStorage, so the page picks up where it left off.
+// The URL carries only that one parameter, so it matches an Exact condition as well as Contains.
+// Starting or ending a tour early only rewrites the URL (no navigation): `?start=` / `?exit=`.
+const pageUrl = () => window.location.origin + window.location.pathname
+
+export function doneUrl(tourId: string) {
+  return `${pageUrl()}?done=${encodeURIComponent(tourId)}`
+}
+
+export function markTour(kind: 'start' | 'exit', tourId: string) {
+  window.history.replaceState(null, '', `${pageUrl()}?${kind}=${encodeURIComponent(tourId)}`)
 }

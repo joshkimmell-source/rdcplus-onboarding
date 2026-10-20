@@ -31,25 +31,29 @@ We are testing the five in-product tours, not the workspace itself.
 
 1. Build and publish the prototype with tracking turned on (`tracking/README.md`, steps 1 and 2, then `npm run deploy:test`).
 2. Open the published URL yourself and confirm `session_start` appears on the Sheet's `Events` tab.
-3. **Check the Completion URLs in a UserTesting preview** (below). They work by changing the URL hash on the same page, and UserTesting may not treat that as arriving at the URL. If a task does not complete, tell me and we switch to real completion pages.
+3. **Pilot the success URLs in UserTesting** (section 4) before launching. UserTesting's docs don't say how it detects a URL change, so confirm one task validates end to end.
 4. There is no password. The first screen says the prototype is for testing and none of the data is real, then asks for a first name, which becomes "<First> Agent" (initials included) everywhere the agent appears. Tell participants to use their first name (any name works).
 5. Use these Start URLs so sessions are labeled by test: desktop `https://rdcplus-test.github.io/agent-walkthrough/?pid=ut-desktop`, mobile `https://rdcplus-test.github.io/agent-walkthrough/?pid=ut-mobile`.
 
-## 4. Completion URLs
+## 4. Completion URLs and UserTesting settings
 
-Same page, URL hash changes when the tour's last step is finished (**Done**). Paste each into its activity in UserTesting.
+When a participant presses **Done** on a tour's last step, the page loads `https://rdcplus-test.github.io/agent-walkthrough/?done=<tour>` (a real page load; their progress is kept). UserTesting's *Validation by URL* (Navigation task) then sees that URL.
 
-The test copy is published by `npm run deploy:test` to `https://rdcplus-test.github.io/agent-walkthrough/` only (nothing is served at the site root). Always include the trailing slash: GitHub redirects `…/agent-walkthrough` to `…/agent-walkthrough/`, and the page URL a participant ends on has the slash, so the Completion URL should match it exactly.
+| Activity | Success URL (Contains) | Exact URL (if you use Exact) |
+|---|---|---|
+| 2. Tour your workspace | `done=workspace` | `https://rdcplus-test.github.io/agent-walkthrough/?done=workspace` |
+| 3. Explore your sample client | `done=sample` | `https://rdcplus-test.github.io/agent-walkthrough/?done=sample` |
+| 4. Schedule a tour | `done=schedule` | `https://rdcplus-test.github.io/agent-walkthrough/?done=schedule` |
+| 5. Ask RealAssist™ AI | `done=assist` | `https://rdcplus-test.github.io/agent-walkthrough/?done=assist` |
+| 6. Invite your clients | `done=clients` | `https://rdcplus-test.github.io/agent-walkthrough/?done=clients` |
 
-| Activity | Completion URL |
-|---|---|
-| 2. Tour your workspace | `https://rdcplus-test.github.io/agent-walkthrough/#done-workspace` |
-| 3. Explore your sample client | `https://rdcplus-test.github.io/agent-walkthrough/#done-sample` |
-| 4. Schedule a tour | `https://rdcplus-test.github.io/agent-walkthrough/#done-schedule` |
-| 5. Ask RealAssist™ AI | `https://rdcplus-test.github.io/agent-walkthrough/#done-assist` |
-| 6. Invite your clients | `https://rdcplus-test.github.io/agent-walkthrough/#done-clients` |
+**Settings in each Navigation task** (from UserTesting's "Operators for conditions based on URL" and "Validate participants by URLs reached" articles)
+- **Operator: Contains** with the text in the middle column. It tolerates the trailing slash and any extra text. **Exact** also works with the full URL in the last column (always include the trailing slash after `agent-walkthrough`), because the page's URL has only that one parameter. Avoid **Not contains**: it validates on any other URL.
+- **Validation: Intercept them**, with a short delay (about 2 seconds) and a message such as "Nice, you finished the tour". The page reloads at Done, so a small delay lets it settle.
+- **Starting URL:** Task 1 uses the Start URL from section 3 (it sets the participant label). For Tasks 2 to 6 choose **Continue at the same page where participants left off**. A new browser tab would be a new session and ask for the first name again.
+- The URL contains only `done=<tour>` after Done, then changes to `?start=<tour>` when a tour starts and `?exit=<tour>` if it is ended early (✕ or Esc), so finishing the same tour twice arrives at the success URL each time.
 
-If a participant ends a tour early (✕ or Esc) the URL becomes `#exit-<tour>` and the activity will not auto-complete. They can restart the tour from Getting started, or tell us they are done.
+If a task does not validate in your pilot: switch it to **Let them continue browsing** and tell participants to click **Success** after Done, or tell me and we give each tour its own path and use **Starts with**.
 
 ## 5. Session flow
 
@@ -94,7 +98,7 @@ Each activity ends with the same two follow-ups, then its own probes.
 ---
 
 ### Activity 2: Tour your workspace
-Completion URL: `…#done-workspace`
+Success URL: `done=workspace` (Contains)
 
 **Task:** "Open the **Getting started** list (a small panel at the bottom of the screen) and start **Tour your workspace**. Follow the steps until you reach **Done**."
 *(Participants who chose "Show me around" in Activity 1 are already in it. They should keep going until Done.)*
@@ -111,7 +115,7 @@ Completion URL: `…#done-workspace`
 ---
 
 ### Activity 3: Explore your sample client
-Completion URL: `…#done-sample`
+Success URL: `done=sample` (Contains)
 
 **Task:** "From Getting started, start **Explore your sample client**. Follow the steps until you reach **Done**."
 
@@ -129,7 +133,7 @@ Completion URL: `…#done-sample`
 ---
 
 ### Activity 4: Schedule a tour
-Completion URL: `…#done-schedule`
+Success URL: `done=schedule` (Contains)
 
 **Task:** "From Getting started, start **Schedule a tour**. Pick homes for a showing, create the tour, then follow the remaining steps until you reach **Done**."
 This is the longest tour (13 steps). Note where energy drops.
@@ -152,7 +156,7 @@ This is the longest tour (13 steps). Note where energy drops.
 ---
 
 ### Activity 5: Ask RealAssist™ AI
-Completion URL: `…#done-assist`
+Success URL: `done=assist` (Contains)
 
 **Task:** "From Getting started, start **Ask RealAssist™ AI**. Follow the steps until you reach **Done**."
 
@@ -171,7 +175,7 @@ Completion URL: `…#done-assist`
 ---
 
 ### Activity 6: Invite your clients
-Completion URL: `…#done-clients`
+Success URL: `done=clients` (Contains)
 
 **Task:** "From Getting started, start **Invite your clients**. Follow the steps until you reach **Done**. You can use made-up client details, or click **Show me**."
 Tell participants: if they type a real person's details, the prototype shows a notice that a real invitation would be sent. (Nothing is actually sent.)
