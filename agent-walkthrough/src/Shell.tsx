@@ -2557,7 +2557,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     flush(true)
     try { sessionStorage.removeItem(STATE_KEY) } catch { /* ignore */ }
     forgetWelcomeSeen()
-    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    window.history.replaceState(null, '', window.location.pathname) // drop ?done= / ?start= / ?exit=
     window.location.reload()
   }
   useEffect(() => { savePrefs({ toursDone: done, listDismissed: listGone, welcomeSeen: !welcome }) }, [done, listGone, welcome])
