@@ -63,7 +63,7 @@ import {
 } from './tours'
 import { Coachmark } from './Coachmark'
 import { useIsMobile, useIsNarrowDesktop, useViewportWidth } from './viewport'
-import { track, trackOnce, setLayout, setTourHash, flush } from './telemetry'
+import { track, trackOnce, setLayout, markTour, doneUrl, flush } from './telemetry'
 import { AGENT, welcomeSeen, markWelcomeSeen, forgetWelcomeSeen } from './agent'
 import { TourList, WelcomeDialog, type Agent, type ListCorner } from './Onboarding'
 
@@ -370,7 +370,9 @@ const KEPT: (keyof Workspace)[] = [
   'route', 'clientTab', 'detailTab', 'clientView', 'tourView', 'tourTab', 'tourId', 'selected',
   'tours', 'invites', 'chat', 'chipsUsed', 'assistMsgs', 'newChats', 'optimized', 'calendarAdds',
 ]
-type SavedState = { ws: Partial<Workspace>; done: Partial<Record<TourId, boolean>>; listGone: boolean }
+type SavedState = { ws: Partial<Workspace>; done: Partial<Record<TourId, boolean>>; listGone: boolean; listOpen?: boolean }
+// A message to show once after the page loads (for example "You've finished every tour").
+const NOTE_KEY = 'rdcplus-onboarding:note'
 function loadState(): SavedState | null {
   try {
     const raw = sessionStorage.getItem(STATE_KEY)
@@ -383,11 +385,11 @@ function loadState(): SavedState | null {
     return null
   }
 }
-function saveState(ws: Workspace, done: SavedState['done'], listGone: boolean) {
+function saveState(ws: Workspace, done: SavedState['done'], listGone: boolean, listOpen: boolean) {
   try {
     const kept: Partial<Workspace> = {}
     for (const k of KEPT) (kept as Record<string, unknown>)[k] = ws[k]
-    sessionStorage.setItem(STATE_KEY, JSON.stringify({ ws: kept, done, listGone } satisfies SavedState))
+    sessionStorage.setItem(STATE_KEY, JSON.stringify({ ws: kept, done, listGone, listOpen } satisfies SavedState))
   } catch { /* storage full or blocked: the session just won't survive a reload */ }
 }
 
@@ -2504,7 +2506,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 
   // ── Onboarding state ──
   const [welcome, setWelcome] = useState(() => !welcomeSeen())
-  const [listOpen, setListOpen] = useState(false)
+  const [listOpen, setListOpen] = useState(saved?.listOpen ?? false)
   const [listGone, setListGone] = useState(saved?.listGone ?? false)
   const [done, setDone] = useState<Partial<Record<TourId, boolean>>>(saved?.done ?? {})
   const [active, setActive] = useState<Active>(null)
@@ -2522,7 +2524,26 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const hideList = (note: string) => { setListGone(true); setListOpen(false); flash(note) }
 
   useEffect(() => { if (!welcome) markWelcomeSeen() }, [welcome])
-  useEffect(() => { saveState(ws, done, listGone) }, [ws, done, listGone])
+  useEffect(() => { saveState(ws, done, listGone, listOpen) }, [ws, done, listGone, listOpen])
+
+  // A message saved just before the page navigated away (see below) shows once on the next load.
+  useEffect(() => {
+    try {
+      const note = sessionStorage.getItem(NOTE_KEY)
+      if (!note) return
+      sessionStorage.removeItem(NOTE_KEY)
+      flash(note)
+    } catch { /* ignore */ }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Done on a tour's last step navigates to `?done=<tour>` (see telemetry.ts). This effect is declared
+  // after the one above, so the finished tour is saved before the page leaves.
+  const [pendingDone, setPendingDone] = useState<TourId | null>(null)
+  useEffect(() => {
+    if (!pendingDone) return
+    flush(true)
+    window.location.assign(doneUrl(pendingDone))
+  }, [pendingDone])
 
   // Account → Start over: clear the saved session and reload to the welcome screen.
   const [confirmReset, setConfirmReset] = useState(false)
@@ -2632,7 +2653,13 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
 
   // ── Session tracking (see telemetry.ts and tracking/README.md) ──
   useEffect(() => { setLayout(mobile ? 'mobile' : 'desktop') }, [mobile])
-  useEffect(() => { if (!locked) trackOnce('session_start', { referrer: document.referrer ? 'yes' : 'no' }) }, [locked])
+  useEffect(() => {
+    if (locked) return
+    // One session_start per browser tab; later loads (a reload, or the page load after Done) log page_load.
+    let first = true
+    try { first = !sessionStorage.getItem('rdcplus-wt:started'); sessionStorage.setItem('rdcplus-wt:started', '1') } catch { /* ignore */ }
+    trackOnce(first ? 'session_start' : 'page_load', { referrer: document.referrer ? 'yes' : 'no' })
+  }, [locked])
   type Move = 'start' | 'next' | 'back' | 'auto' | 'show_me'
   const pendingMove = useRef<Move>('start')
   // What happened on the step on screen, and across the tour, for step_exit and tour_complete.
@@ -2685,7 +2712,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     pendingMove.current = 'start'
     run.current = { startedAt: Date.now(), steps: 0, back: 0, showMe: 0, blocked: 0, stuck: 0, long: 0 }
     track('tour_start', { tour: id, source, steps: TB[id].stops.length })
-    setTourHash('start', id)
+    markTour('start', id)
     const view = mobile ? mobileViewFor(first.target) : null
     // Reset to a known state. Tours that need a fresh launcher or fresh quick replies
     // clear them so replays still have something to point at.
@@ -2714,15 +2741,17 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     leaveStep(i >= t.stops.length ? 'complete' : how)
     if (i >= t.stops.length) {
       track('tour_complete', { tour: active.id, steps: t.stops.length, ...runTotals() })
-      setTourHash('done', active.id)
       setDone(d => ({ ...d, [active.id]: true }))
       if (active.id === 'assist' || active.id === 'workspace') patch({ sheet: null, expanded: false, over: false })
       if (active.id === 'clients') dropSampleInvites()
       if (active.id === 'schedule') patch({ mapsMenuOpen: false })
       if (active.id === 'sample') patch({ chatOpen: false, chatExpanded: false })
       setActive(null)
+      setPendingDone(active.id)
       if (TOURS.every(x => x.id === active.id || done[x.id])) {
-        hideList(`You’ve finished every tour. Choose Support in the ${mobile ? 'bottom bar' : 'left rail'} to replay any of them.`)
+        const note = `You’ve finished every tour. Choose Support in the ${mobile ? 'bottom bar' : 'left rail'} to replay any of them.`
+        try { sessionStorage.setItem(NOTE_KEY, note) } catch { /* ignore */ }
+        hideList(note)
         return
       }
       setListOpen(true)
@@ -2737,7 +2766,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
     backedTo.current = i < active.i ? `${active.id}:${i}` : null
     setActive({ id: active.id, i })
   }, [active, patch, dropSampleInvites, ws, mobile, done])
-  const endTour = useCallback(() => { if (active) { leaveStep('end'); track('tour_abandon', { ...stepInfo(active.id, active.i), ...runTotals() }); setTourHash('exit', active.id) } if (active?.id === 'assist' || active?.id === 'workspace') patch({ sheet: null, expanded: false, over: false }); if (active?.id === 'clients') dropSampleInvites(); if (active?.id === 'schedule') patch({ mapsMenuOpen: false }); if (active?.id === 'sample') patch({ chatOpen: false, chatExpanded: false }); setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [active, patch, dropSampleInvites])
+  const endTour = useCallback(() => { if (active) { leaveStep('end'); track('tour_abandon', { ...stepInfo(active.id, active.i), ...runTotals() }); markTour('exit', active.id) } if (active?.id === 'assist' || active?.id === 'workspace') patch({ sheet: null, expanded: false, over: false }); if (active?.id === 'clients') dropSampleInvites(); if (active?.id === 'schedule') patch({ mapsMenuOpen: false }); if (active?.id === 'sample') patch({ chatOpen: false, chatExpanded: false }); setActive(null); setListOpen(true); setListFocus(k => k + 1) }, [active, patch, dropSampleInvites])
   const openTours = () => { track('list_open_support'); setActive(null); setListGone(false); setListNote(''); setListOpen(true); setListFocus(k => k + 1) }
 
   const stop = active ? TB[active.id].stops[active.i] : null

@@ -70,15 +70,15 @@ Every event has `t` (ISO time), `sid` (random per browser tab), `pid` (optional 
 
 ## Completion URLs (UserTesting)
 
-The app changes the URL hash on the same page, with no reload:
+UserTesting's *Validation by URL* could not see an in-page `#hash` change, so **Done** now loads a real page: `https://rdcplus-test.github.io/agent-walkthrough/?done=<tour>`. The session is kept in the browser tab, so the participant lands back in the prototype with their progress.
 
-| When | Hash |
+| When | URL |
 |---|---|
-| A tour starts | `#start-<tour>` |
-| Done on the last step | `#done-<tour>` |
-| Ended early | `#exit-<tour>` |
+| A tour starts | `?start=<tour>` (rewritten in place, no reload) |
+| Done on the last step | `?done=<tour>` (page load) |
+| Ended early | `?exit=<tour>` (rewritten in place) |
 
-Tour ids: `workspace`, `sample`, `schedule`, `assist`, `clients`. The Completion URL for an activity is the prototype URL plus `#done-<tour>`; the full list is in `docs/user-test-plan.md`.
+Tour ids: `workspace`, `sample`, `schedule`, `assist`, `clients`. `?pid=` and `?notrack` from the Start URL are kept for the tab, so events keep their label. The `page_load` event marks each later load of the page. The UserTesting operator and Starting URL settings are in `docs/user-test-plan.md`, section 4.
 
 ## Testing without a Sheet
 
