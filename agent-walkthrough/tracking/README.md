@@ -1,7 +1,7 @@
 # Walkthrough user-test tracking
 
 The prototype logs what a participant does in the Getting started tours and sends it to a Google Sheet through a Google Form.
-Nothing is sent unless the app is built with the Form settings below. Typed text (invite form, chat) is never recorded.
+Nothing is sent unless the app is built with the Form settings below. Typed text (invite form, chat) is never recorded. The one exception is the first name typed on the opening screen, which is sent as `firstName` on every event so results can be matched to a participant; the opening screen tells participants this.
 
 ## 1. Create the Form and Sheet (one time, about 15 minutes)
 
@@ -42,14 +42,14 @@ In the Sheet use the **Walkthrough → Refresh summary** menu (or add a time tri
 |---|---|
 | `Tours` | Per tour and layout: sessions started, sessions completed, **completion %**, abandons, median time |
 | `Steps` | Per step: views, median dwell, back %, show me %, blocked clicks, stuck, long dwell, abandons here, **friction score** (sorted worst first) |
-| `Sessions` | One row per participant session, with their totals |
+| `Sessions` | One row per participant session, with their first name and totals |
 | `Events` | The raw log |
 
 Completion means the participant pressed **Done** on the tour's last step. Ending a tour early (✕ or Esc) counts as an abandon and records the step they were on.
 
 ## Events
 
-Every event has `t` (ISO time), `sid` (random per browser tab), `pid` (optional label), `seq`, `layout` (`desktop` or `mobile`), `vw`/`vh`.
+Every event has `t` (ISO time), `sid` (random per browser tab), `pid` (optional label), `firstName` (typed on the opening screen; empty until entered), `seq`, `layout` (`desktop` or `mobile`), `vw`/`vh`.
 
 | Event | When | Extra fields |
 |---|---|---|

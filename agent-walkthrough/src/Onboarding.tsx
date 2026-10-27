@@ -50,7 +50,7 @@ export function WelcomeDialog({ open, agent, onExplore, onTour }: {
           <div className={hstack({ gap: '300', p: '400', bg: 'bg.alternate', borderRadius: '[12px]', alignItems: 'flex-start' })}>
             <Avatar size="xs" initials={['Alex', 'Rivera']} />
             <p className={css({ fontSize: '[14px]', lineHeight: '[20px]', color: 'text.base' })}>
-              We added <strong>Alex Rivera</strong>, a sample client, so you can try chat and tours without reaching a real person.
+              <strong>Alex Rivera</strong> is a practice client. Alex shows how a real client’s feed, chat, and tours look, and nothing you do reaches a real person.
             </p>
           </div>
         </div>

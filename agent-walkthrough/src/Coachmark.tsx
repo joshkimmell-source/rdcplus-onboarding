@@ -18,10 +18,10 @@ const GAP = 14
 const PAD = 6
 const MARGIN = 16
 const MOTION = 'cubic-bezier(0.5, 0, 0.2, 1)'
-// Non-token values from the spec: the warm-black scrim (text.base at 50%), the
-// white focus ring, and the brand-red ring used when dimming is off.
-const SPOT_DIM = '0 0 0 2px #FFFFFF, 0 0 0 9999px rgba(26,24,22,0.5)'
-const SPOT_RING = '0 0 0 2px #D92228, 0 0 0 6px rgba(217,34,40,0.18)'
+// Non-token values from the spec: the warm-black scrim (text.base at 50%), the 3px black border
+// on every highlighted area, and the faint brand-red halo used when dimming is off.
+const SPOT_DIM = '0 0 0 3px #000000, 0 0 0 9999px rgba(26,24,22,0.5)'
+const SPOT_RING = '0 0 0 3px #000000, 0 0 0 7px rgba(217,34,40,0.18)'
 
 type Rect = { top: number; left: number; width: number; height: number }
 
@@ -78,18 +78,24 @@ function placeMobile(stop: Stop, r: Rect | null, h: number, vw: number, vh: numb
 }
 
 export function Coachmark({
-  tour, index, dim, conditionMet, onNext, onBack, onShowMe, onEnd, onBlocked, onTargetMissing,
+  tour, index, dim, conditionMet, onNext, onBack, onShowMe, onEnd, onBlocked, onTargetMissing, onTargetRetry,
 }: {
   tour: Tour; index: number; dim: boolean; conditionMet: boolean
   onNext: () => void; onBack: () => void; onShowMe: () => void; onEnd: () => void
   // Tracking: a click on the dimmed page, and a target that never appeared.
   onBlocked?: () => void; onTargetMissing?: () => void
+  // Called once, partway to "missing": re-apply the stop's view in case the pane slipped away.
+  onTargetRetry?: () => void
 }) {
   const stop = tour.stops[index]
   const n = tour.stops.length
   const reduced = usePrefersReducedMotion()
   const mobile = useIsMobile()
   const popRef = useRef<HTMLDivElement>(null)
+  // Blocked taps on this stop. After two, the card says what is happening instead of staying silent.
+  const [blockedTaps, setBlockedTaps] = useState(0)
+  useEffect(() => setBlockedTaps(0), [tour.id, index])
+  const blockedTap = () => { setBlockedTaps(n => n + 1); onBlocked?.() }
   const [m, setM] = useState<{ rect: Rect | null; popH: number; vw: number; vh: number }>(
     { rect: null, popH: 220, vw: window.innerWidth, vh: window.innerHeight },
   )
@@ -132,8 +138,9 @@ export function Coachmark({
   // Tracking: the spotlight target never showed up (a defect, not the participant's doing).
   useEffect(() => {
     if (m.rect) return
+    const retry = window.setTimeout(() => onTargetRetry?.(), 500)
     const id = window.setTimeout(() => onTargetMissing?.(), 1200)
-    return () => window.clearTimeout(id)
+    return () => { window.clearTimeout(retry); window.clearTimeout(id) }
   }, [m.rect === null, tour.id, index]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const action = !!stop.until
@@ -156,13 +163,13 @@ export function Coachmark({
       {/* Click blockers around the cut-out (or the whole page while the target is missing). */}
       {spot ? (
         <>
-          <div className={blocker} onPointerDown={onBlocked} style={{ top: 0, left: 0, right: 0, height: spot.top }} />
-          <div className={blocker} onPointerDown={onBlocked} style={{ top: spot.top + spot.height, left: 0, right: 0, bottom: 0 }} />
-          <div className={blocker} onPointerDown={onBlocked} style={{ top: spot.top, left: 0, width: spot.left, height: spot.height }} />
-          <div className={blocker} onPointerDown={onBlocked} style={{ top: spot.top, left: spot.left + spot.width, right: 0, height: spot.height }} />
+          <div className={blocker} onPointerDown={blockedTap} style={{ top: 0, left: 0, right: 0, height: spot.top }} />
+          <div className={blocker} onPointerDown={blockedTap} style={{ top: spot.top + spot.height, left: 0, right: 0, bottom: 0 }} />
+          <div className={blocker} onPointerDown={blockedTap} style={{ top: spot.top, left: 0, width: spot.left, height: spot.height }} />
+          <div className={blocker} onPointerDown={blockedTap} style={{ top: spot.top, left: spot.left + spot.width, right: 0, height: spot.height }} />
         </>
       ) : (
-        <div className={blocker} onPointerDown={onBlocked} style={{ inset: 0, background: dim ? 'rgba(26,24,22,0.5)' : undefined }} />
+        <div className={blocker} onPointerDown={blockedTap} style={{ inset: 0, background: dim ? 'rgba(26,24,22,0.5)' : undefined }} />
       )}
 
       {/* Spotlight — a rounded cut-out whose giant shadow is the scrim. */}
@@ -212,10 +219,16 @@ export function Coachmark({
           </p>
         )}
 
+        {blockedTaps >= 2 && !conditionMet && (
+          <p role="status" className={css({ fontSize: '[13px]', lineHeight: '[18px]', color: 'text.alternate' })}>
+            {action ? 'Only the highlighted area works right now. Tap it, or choose Show me and we’ll do it for you.' : 'Only the highlighted area works during the tour. Choose Next to keep going.'}
+          </p>
+        )}
+
         <div className={hstack({ gap: '200', pt: mobile ? '100' : '200' })}>
           {index > 0 && <Button styleType="Tertiary" size="sm" onClick={onBack}>Back</Button>}
           <div className={css({ flex: '1' })} />
-          {action && <Button styleType="Ghost" size="sm" onClick={onShowMe}>Show me</Button>}
+          {action && <Button styleType="Ghost" size="sm" onClick={onShowMe}>{stop.showMeLabel ?? 'Show me'}</Button>}
           {showNext && (
             <Button styleType="Primary" size="sm" disabled={nextDisabled} onClick={onNext}>{last ? 'Done' : 'Next'}</Button>
           )}

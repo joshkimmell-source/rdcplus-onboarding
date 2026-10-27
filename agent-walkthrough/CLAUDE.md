@@ -17,7 +17,7 @@ checklist, the agent learns in the real workspace through coachmark tours.
 
 ## Tracking (user tests)
 
-`src/telemetry.ts` logs session, tour and step events to a Google Sheet through a Google Form when built with `VITE_TRACKING_FORM_URL` / `VITE_TRACKING_FORM_ENTRY` / `VITE_TRACKING_TOKEN` (git-ignored `.env.local`). Done on a tour's last step loads `?done=<tour>` (a real page load; the session survives it) for UserTesting's Validation by URL, and starting or ending a tour early rewrites the URL to `?start=` / `?exit=`. Setup, events and the summary tabs are in `tracking/README.md`; the test plan is `docs/user-test-plan.md`. Typed text is never recorded.
+`src/telemetry.ts` logs session, tour and step events to a Google Sheet through a Google Form when built with `VITE_TRACKING_FORM_URL` / `VITE_TRACKING_FORM_ENTRY` / `VITE_TRACKING_TOKEN` (git-ignored `.env.local`). Done on a tour's last step loads `?done=<tour>` (a real page load; the session survives it) for UserTesting's Validation by URL, and starting or ending a tour early rewrites the URL to `?start=` / `?exit=`. Setup, events and the summary tabs are in `tracking/README.md`; the test plan is `docs/user-test-plan.md`. Typed text is never recorded, except the first name from the opening screen, which goes out as `firstName` on every event (and the opening screen says so).
 
 ## Phones (under 768px)
 
@@ -46,7 +46,7 @@ Kept the shell's structure and primitives; added only what the tours point at:
 
 ## Product rules
 
-- The way in is `NameGate` (`src/NameGate.tsx`): it says this is a test prototype with made-up data and asks for a first name. `src/agent.ts` turns "Josh" into the agent "Josh Agent" (initials JA) wherever the agent appears, including the greeting in Alex's first chat message. The name stays in the browser tab; telemetry never sends it. There is no password.
+- The way in is `NameGate` (`src/NameGate.tsx`): it says this is a test prototype with made-up data and asks for a first name. `src/agent.ts` turns "Josh" into the agent "Josh Agent" (initials JA) wherever the agent appears, including the greeting in Alex's first chat message. The name stays in the browser tab and, when tracking is on, telemetry sends it as `firstName` (NameGate discloses this). There is no password.
 
 - The agent signs in through their MLS. Profile, license, and service area are shown read-only ("From your MLS"). No forms during onboarding.
 - Alex Rivera is a sample client, labeled everywhere. Nothing sent to Alex reaches a real person.

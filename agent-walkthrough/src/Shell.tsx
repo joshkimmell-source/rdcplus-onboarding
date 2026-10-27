@@ -257,8 +257,10 @@ const LISTINGS: Listing[] = [
     headline: { text: 'Saved last week', kind: 'new' }, openHouse: null, saved: true,
   },
 ]
+// The three homes the Schedule a tour tour picks for the agent (Show me, Back, replays).
+const THIS_WEEK = ['l1', 'l3', 'l4']
 const LISTING_GROUPS: { label: string; ids: string[] }[] = [
-  { label: 'This week', ids: ['l1', 'l3', 'l4'] },
+  { label: 'This week', ids: THIS_WEEK },
   { label: 'Last week', ids: ['l5'] },
 ]
 const listingById = (id: string) => LISTINGS.find(l => l.id === id)!
@@ -403,26 +405,26 @@ const TOUR_RESET: Partial<Workspace> = {
 // moved on to another screen, dialog, or panel since they were last here.
 function viewFor(target: string, ws: Workspace): Partial<Workspace> {
   const clients: Partial<Workspace> = { route: 'clients', tourModal: 'closed', inviteOpen: false }
-  const homes = ws.selected.length ? ws.selected : ['l1', 'l3']
+  const homes = ws.selected.length ? ws.selected : THIS_WEEK
   switch (target) {
-    case 'rail': case 'clienthead': case 'feedtiles': case 'thisweek': case 'activitytab':
+    case 'rail': case 'clienthead': case 'feedbody': case 'feedtiles': case 'thisweek': case 'pickhomes': case 'activitytab':
       return { ...clients, chatOpen: false, feedMenuOpen: false }
     case 'clientlist': return { ...clients, subnavOpen: true }
-    case 'askra': return { ...clients, sheet: null }
+    case 'askra': return { ...clients, sheet: null, chatOpen: false }
     case 'feedtitle': return { ...clients, feedMenuOpen: false, chatOpen: false }
     case 'feedchat': return { ...clients, feedMenuOpen: true, chatOpen: false }
-    case 'chatwindow': case 'chatthread': return { ...clients, feedMenuOpen: false, chatOpen: true }
+    case 'chatwindow': case 'chatchips': case 'chatthread': return { ...clients, feedMenuOpen: false, chatOpen: true }
     case 'addtotour': return { ...clients, selected: homes }
     case 'tourdialog': return { route: 'clients', inviteOpen: false, selected: homes, tourModal: 'choose' }
     case 'pickdate': case 'createbtn':
       return { route: 'clients', inviteOpen: false, selected: homes, tourModal: 'new', draft: { clientId: SAMPLE_CLIENT.id, date: ws.draft.date ?? nextSaturday() } }
     case 'tourslist': return { route: 'tours', subnavOpen: true, tourModal: 'closed' }
-    case 'tourdetail': case 'tourlayout': case 'tourlist': case 'tourroute': case 'touroptimize': case 'tourcalendar': case 'tourmaps':
+    case 'tourdetail': case 'tourswitch': case 'tourlayout': case 'tourlist': case 'tourroute': case 'touroptimize': case 'tourcalendar': case 'tourmaps':
       return { route: 'tours', subnavOpen: true, tourModal: 'closed', ...(target === 'tourroute' ? { routeShown: false } : null) }
-    case 'assistpanel': case 'assistreply': case 'newchat': case 'expandpanel': case 'threads': case 'closepanel':
+    case 'assistpanel': case 'assistactions': case 'threadsbtn': case 'assistreply': case 'newchat': case 'expandpanel': case 'threads': case 'closepanel':
       return { ...clients, sheet: 'assist' }
     case 'addclient': return { ...clients, clientTab: 'Active', subnavOpen: true }
-    case 'addbody': case 'inviteform': return { route: 'clients', tourModal: 'closed', inviteOpen: true }
+    case 'invitedialog': case 'addbody': case 'inviteform': return { route: 'clients', tourModal: 'closed', inviteOpen: true }
     default: return {}
   }
 }
@@ -435,7 +437,7 @@ function mobileViewFor(target: string): Partial<Workspace> {
     case 'clientlist': case 'addclient': return { route: 'clients', clientView: 'list', sheet: null }
     case 'clienthead': case 'feedtiles': case 'feedbody': case 'thisweek': case 'activitytab': case 'feedtitle': case 'feedchat': case 'addtotour':
       return { route: 'clients', clientView: 'feed', sheet: null }
-    case 'askra': return { sheet: null }
+    case 'askra': return { sheet: null, chatOpen: false }
     case 'threadsbtn': return { sheet: 'assist', over: false }
     case 'tourslist': case 'tourrow': return { route: 'tours', tourView: 'list' }
     case 'tourswitch': case 'tourroute': case 'touroptimize': case 'tourcalendar': case 'tourmaps': return { route: 'tours', tourView: 'detail', tourPane: 'map', sheet: null }
@@ -2153,7 +2155,7 @@ function InviteModal({ open, demo, onInvite, onClose, children }: {
   const section = vstack({ alignItems: 'stretch', gap: '300', pt: '500', borderTopWidth: '100', borderTopStyle: 'solid', borderColor: 'border.base' })
   const sectionTitle = css({ fontWeight: 'semibold', color: 'text.base', m: '0' })
   return (
-    <Modal open={open} onClose={onClose} width="min(560px, calc(100vw - 16px))">
+    <Modal open={open} onClose={onClose} width="min(560px, calc(100vw - 16px))" data-tour="invitedialog">
       <Modal.Header title="Invite client" />
       <Modal.Body>
         <div data-tour="addbody" className={vstack({ alignItems: 'stretch', gap: '500', py: '400' })}>
@@ -2585,7 +2587,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const finishTour = (s: Workspace, tours: BookedTour[], tourId: string): Workspace =>
     ({ ...s, tours, tourId, tourTab: 'Upcoming', tourView: 'list', selected: [], draft: { clientId: null, date: null }, tourModal: 'closed', route: 'tours' })
   const createTour = (force = false) => setWs(s => {
-    const homes = s.selected.length ? s.selected : force ? ['l1', 'l3'] : []
+    const homes = s.selected.length ? s.selected : force ? THIS_WEEK : []
     const clientId = s.draft.clientId ?? (force ? SAMPLE_CLIENT.id : null)
     const date = s.draft.date ?? (force ? nextSaturday() : null)
     const client = [SAMPLE_CLIENT, ...s.invites.map(i => ({ id: i.id, name: i.name }))].find(c => c.id === clientId)
@@ -2618,7 +2620,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
       case 'feedMenuOpen': return patch({ feedMenuOpen: true })
       case 'chatOpen': return openChat()
       case 'chatSent': return sendChip(CHIPS.find(x => !ws.chipsUsed.includes(x.id)) ?? CHIPS[0])
-      case 'homesPicked': return patch({ selected: ['l1', 'l3', 'l4'] })
+      case 'homesPicked': return patch({ selected: THIS_WEEK })
       case 'addToTourOpen': return openTourModal()
       case 'newTourStarted': return startNewTour()
       case 'clientPicked': return setWs(s => ({ ...s, draft: { ...s.draft, clientId: SAMPLE_CLIENT.id } }))
@@ -2770,6 +2772,9 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
   const openTours = () => { track('list_open_support'); setActive(null); setListGone(false); setListNote(''); setListOpen(true); setListFocus(k => k + 1) }
 
   const stop = active ? TB[active.id].stops[active.i] : null
+  // The Haven Popover closes on any outside press or focus move, and the coachmark takes focus on
+  // every stop, so hold the Feed Members popover open while the tour is pointing at its Chat button.
+  const setFeedMenu = (feedMenuOpen: boolean) => { if (!feedMenuOpen && stop?.target === 'feedchat') return; patch({ feedMenuOpen }) }
   const met = stop?.until ? isMet(stop.until, ws, base) : false
   // Action stops advance on their own once the real action happens.
   useEffect(() => {
@@ -2816,6 +2821,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
         if (stop?.manual) goStop(active.i + 1, 'show_me')
       }}
       onBlocked={() => { trail.current.blocked += 1 }}
+      onTargetRetry={() => stop && patch({ ...viewFor(stop.target, ws), ...(mobile ? mobileViewFor(stop.target) : null), ...stop.enter })}
       onTargetMissing={() => track('target_missing', stepInfo(active.id, active.i))}
     />
   ) : null
@@ -2854,7 +2860,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
           ) : (
             <>
               <MobileFeedHeader
-                feed={<FeedPopover open={ws.feedMenuOpen} onOpenChange={feedMenuOpen => patch({ feedMenuOpen })} onChat={openChat} />}
+                feed={<FeedPopover open={ws.feedMenuOpen} onOpenChange={setFeedMenu} onChat={openChat} />}
                 activity={ws.detailTab === 'activity'} onBack={() => patch({ clientView: 'list', feedMenuOpen: false })}
                 onActivity={() => patch({ detailTab: ws.detailTab === 'activity' ? 'homes' : 'activity' })}
               />
@@ -2930,7 +2936,7 @@ export default function Shell({ locked = false, dimDuringTours = true, listCorne
           subnavLabel={subnavVariant === 'clients' ? 'Clients' : 'Tours'}
           onOpenSubnav={() => patch({ subnavOpen: true })}
           feed={ws.route === 'clients' ? (
-            <FeedPopover open={ws.feedMenuOpen} onOpenChange={feedMenuOpen => patch({ feedMenuOpen })} onChat={openChat} />
+            <FeedPopover open={ws.feedMenuOpen} onOpenChange={setFeedMenu} onChat={openChat} />
           ) : undefined}
           primary={ws.route === 'search' ? (
             <Button styleType="Primary" size="sm">Save search</Button>

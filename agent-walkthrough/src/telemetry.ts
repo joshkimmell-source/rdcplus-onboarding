@@ -1,9 +1,12 @@
 // Session tracking for user testing. Events are submitted to a Google Form that has no sign-in
 // requirement; a script on the Form's response Sheet turns each submission into event rows
 // (see tracking/README.md). Nothing is sent unless the Form is configured at build time, and
-// `?notrack` turns it off for a session. Typed text (invite form, chat) is never recorded.
+// `?notrack` turns it off for a session. Typed text (invite form, chat) is never recorded; the one
+// exception is the first name from the opening screen, sent as `firstName` on every event.
 
 // The Form's response address (…/formResponse) and the id of its one long-answer field (entry.123…).
+import { enteredFirstName } from './agent'
+
 const FORM_URL = import.meta.env.VITE_TRACKING_FORM_URL as string | undefined
 const FORM_ENTRY = import.meta.env.VITE_TRACKING_FORM_ENTRY as string | undefined
 // Submissions without this token are ignored by the Sheet script. It ships in the bundle, so it
@@ -70,7 +73,7 @@ export function flush(beacon = false) {
 
 export function track(name: string, props: Record<string, unknown> = {}) {
   const event = {
-    t: new Date().toISOString(), sid, pid, seq: ++seq, name, layout,
+    t: new Date().toISOString(), sid, pid, firstName: enteredFirstName(), seq: ++seq, name, layout,
     vw: window.innerWidth, vh: window.innerHeight, ...props,
   }
   if (import.meta.env.DEV) console.debug('[track]', name, props)
