@@ -42,7 +42,7 @@ export default function NameGate({ children }: { children: (locked: boolean) => 
                 This prototype exists only to test a design idea. The agent, clients, homes, messages and tours are all made up, and nothing you do here is sent to anyone.
               </p>
               <p className={css({ textStyle: 'bodySm', color: 'text.alternate' })}>
-                We log which steps you view and tap so we can improve the design. We never record what you type, and your first name stays in your browser.
+                We log which steps you view and tap, along with your first name, so we can improve the design and match notes to you. We never record anything else you type.
               </p>
               <TextInput label="First name" autoComplete="given-name" autoFocus value={value} maxLength={24}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setValue(e.target.value); setEmpty(false) }}

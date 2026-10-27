@@ -39,13 +39,15 @@ export type Stop = {
   enter?: Enter
   until?: Condition
   hint?: string
+  // Label for the Show me button when the stop's action has a better name (default 'Show me').
+  showMeLabel?: string
   manual?: boolean
   // Phones: skip a stop that only makes sense on desktop, or override parts of it.
   desktopOnly?: boolean
   mobileOnly?: boolean
   m?: Partial<Pick<Stop, 'target' | 'place' | 'title' | 'body' | 'hint' | 'enter' | 'until'>>
   // Desktop overrides, for the stops written for a phone first.
-  d?: Partial<Pick<Stop, 'target' | 'place' | 'title' | 'body' | 'hint' | 'enter' | 'until'>>
+  d?: Partial<Pick<Stop, 'target' | 'place' | 'title' | 'body' | 'hint' | 'enter' | 'until' | 'showMeLabel'>>
 }
 
 export type TourId = 'workspace' | 'sample' | 'schedule' | 'assist' | 'clients'
@@ -54,15 +56,15 @@ export type Tour = { id: TourId; title: string; mins: string; stops: Stop[] }
 const RAW_TOURS: Tour[] = [
   {
     id: 'workspace', title: 'Tour your workspace', mins: '1 min', stops: [
-      { target: 'rail', place: 'right', title: 'Your workspace', body: 'Clients, Search, and Tours live in this rail, with Support, Alerts, and Chat below. Most of your day starts with a client.', m: { place: 'top', body: 'Clients, Search, Tours, and Chat live in this bar, with Support on the right. Most of your day starts with a client.' } },
-      { target: 'clientlist', place: 'right', title: 'Your clients', body: 'Clients show up here once they accept your invite. Alex Rivera is a sample client we added so you can practice.' },
-      { target: 'clienthead', place: 'left', m: { target: 'feedbody', place: 'sheet' }, title: 'Everything about a client', body: 'The client’s feed, saved searches, and activity all live in this area. Select homes to build a tour, or open Client activity at the top right.' },
-      { target: 'askra', place: 'bottom-end', title: 'RealAssist™ AI', body: 'Ask for a daily catch-up, a tour plan, or a message draft. It docks on the right whenever you need it.', m: { body: 'Ask for a daily catch-up, a tour plan, or a message draft. It opens full screen whenever you need it.' } },
+      { target: 'rail', place: 'right', title: 'Your workspace', body: 'Clients, Search, and Tours live in this rail. Support, Alerts, and Chat are below.', m: { place: 'top', body: 'Clients, Search, Tours, and Chat live in this bar. Support is on the right.' } },
+      { target: 'clientlist', place: 'right', title: 'Your clients', body: 'Clients show up here once they accept your invite. Alex Rivera is a practice client.' },
+      { target: 'clienthead', place: 'left', m: { target: 'feedbody', place: 'sheet' }, title: 'Everything about a client', body: 'A client’s feed, saved searches, and activity live here.' },
+      { target: 'askra', place: 'bottom-end', title: 'RealAssist™ AI', body: 'Ask for a daily catch-up, a tour plan, or a message draft. It docks on the right.', m: { body: 'Ask for a daily catch-up, a tour plan, or a message draft. It opens full screen.' } },
     ],
   },
   {
     id: 'sample', title: 'Explore your sample client', mins: '2 min', stops: [
-      { target: 'feedtiles', place: 'bottom', enter: { detailTab: 'homes' }, title: 'Saves, tour requests, and searches', body: 'Saved & Tour requests counts the homes Alex saved and the tours Alex asked for. Saved Searches are the searches that send Alex new listings automatically.' },
+      { target: 'feedtiles', place: 'bottom', enter: { detailTab: 'homes' }, title: 'Saves, tour requests, and searches', body: 'Alex is a practice client, so nothing here reaches a real person. Saved & Tour requests counts the homes Alex saved and tours Alex asked for. Saved Searches send Alex new listings.' },
       { target: 'thisweek', place: 'top', enter: { detailTab: 'homes' }, title: 'Alex’s feed', body: 'Each client has a feed: listings from their saved searches and homes you share, newest first. Homes Alex saves are marked Saved. Use the filters above to narrow it down.' },
       { target: 'activitytab', place: 'bottom-end', enter: { detailTab: 'homes' }, title: 'See your clients’ activity', body: 'See what a client has viewed and saved, and when they were last active.' },
       { target: 'feedtitle', place: 'bottom', until: 'feedMenuOpen', enter: { detailTab: 'homes' }, title: 'See who’s on this feed', body: 'Choose the Client name to see the contact information for your clients and start a chat.', hint: 'Choose Alex Rivera to continue' },
@@ -73,7 +75,7 @@ const RAW_TOURS: Tour[] = [
   },
   {
     id: 'schedule', title: 'Schedule a tour', mins: '2 min', stops: [
-      { target: 'thisweek', place: 'top', until: 'homesPicked', manual: true, enter: { detailTab: 'homes' }, title: 'Pick homes', body: 'A tour starts with homes, not a button. Use the checkbox on a property to select it. Choose as many of Alex’s saved homes as you like.', hint: 'Select at least 1 home to continue' },
+      { target: 'thisweek', place: 'top', until: 'homesPicked', manual: true, showMeLabel: 'Select 3 homes', enter: { detailTab: 'homes' }, title: 'Pick homes', body: 'A tour starts with homes, not a button. Use the checkbox on a property to select it, or choose Select 3 homes to use Alex’s three saved this week.', hint: 'Select at least 1 home to continue' },
       { target: 'addtotour', place: 'top', until: 'addToTourOpen', title: 'Add to tour', body: 'Selecting homes opens a bar with actions for all of them. Choose Add to tour.', hint: 'Choose Add to tour to continue' },
       { target: 'tourdialog', place: 'left', until: 'newTourStarted', title: 'Start a new tour', body: 'Add the homes to a tour you already have, or start a new one. If you don’t have a tour yet, choose New tour.', hint: 'Choose New tour to continue' },
       { target: 'pickdate', place: 'left', until: 'datePicked', title: 'Pick a date', body: 'Choose the day for the showing. You can change it later.', hint: 'Choose a date to continue' },
@@ -113,8 +115,8 @@ const RAW_TOURS: Tour[] = [
   {
     id: 'clients', title: 'Invite your clients', mins: '1 min', stops: [
       { target: 'addclient', place: 'right', until: 'addOpen', title: 'Invite your clients', body: 'Clients join you on Realtor.com+ by invite. Invite one client or share your link.', hint: 'Choose the Invite client icon to continue' },
-      { target: 'addbody', place: 'left', title: 'Ways to invite', body: 'Invite one client with their contact info, or share your public link if you don’t have it.' },
-      { target: 'inviteform', place: 'left', until: 'invited', title: 'Send your first invite', body: 'Enter their first name, last name, and email. Add a phone number and they’ll get a text too.', hint: 'Choose Invite to continue' },
+      { target: 'invitedialog', place: 'left', title: 'Ways to invite', body: 'Invite one client with their contact info, or share your public link if you don’t have it.', m: { target: 'addbody' } },
+      { target: 'inviteform', place: 'left', until: 'invited', title: 'Send your first invite', body: 'Enter their first name, last name, and email. Add a phone number and they’ll get a text too.', hint: 'Choose Invite to continue', showMeLabel: 'Add sample invite' },
       { target: 'clientlist', place: 'right', enter: { clientTab: 'Invited' }, title: 'Waiting to sign up', body: 'Invited clients show up here until they accept and create a free realtor.com account.' },
     ],
   },

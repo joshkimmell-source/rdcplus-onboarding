@@ -1,10 +1,15 @@
 // The agent the prototype is "signed in" as. Participants enter their first name on the way in,
 // and it becomes "<First> Agent" everywhere the agent's name or initials appear (so Josh becomes
-// "Josh Agent", JA). The name lives in the browser tab only; it is never sent anywhere.
+// "Josh Agent", JA). The name lives in the browser tab. When tracking is on, telemetry attaches it
+// to each event as `firstName` (see enteredFirstName) so results can be matched to a participant.
 
 const KEY = 'rdcplus-onboarding:firstName'
 
 export const AGENT = { firstName: 'Georgia', name: 'Georgia Booth', initials: 'GB', brokerage: 'Brightwater Realty Group' }
+
+// The first name the participant typed, or '' before they have (AGENT.firstName is a default until then).
+let entered = ''
+export const enteredFirstName = () => entered
 
 export function cleanFirstName(raw: string) {
   return raw.trim().replace(/\s+/g, ' ').slice(0, 24)
@@ -14,6 +19,7 @@ export function setAgentFirstName(raw: string) {
   const first = cleanFirstName(raw)
   if (!first) return false
   AGENT.firstName = first
+  entered = first
   AGENT.name = `${first} Agent`
   AGENT.initials = `${first[0].toUpperCase()}A`
   try { sessionStorage.setItem(KEY, first) } catch { /* private mode: the name just won't survive a refresh */ }

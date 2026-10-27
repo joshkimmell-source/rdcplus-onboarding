@@ -14,7 +14,7 @@ var EVENTS = 'Events';
 // One column per field the app sends. Anything else goes into `extra` as JSON.
 var COLUMNS = ['t', 'sid', 'pid', 'seq', 'name', 'layout', 'vw', 'vh', 'tour', 'step', 'steps',
   'stepId', 'title', 'how', 'reason', 'dwellMs', 'blocked', 'hint', 'showMe', 'action', 'source',
-  'choice', 'totalMs', 'stepsViewed', 'back', 'showMeClicks', 'stuck', 'longDwell', 'afterMs', 'extra'];
+  'choice', 'totalMs', 'stepsViewed', 'back', 'showMeClicks', 'stuck', 'longDwell', 'afterMs', 'extra', 'firstName'];
 
 /** Installable trigger: runs for every Form submission. */
 function onFormSubmit(e) {
@@ -59,7 +59,8 @@ function eventsSheet_() {
  * installs the Form-submit trigger.
  */
 function setup() {
-  eventsSheet_();
+  // Keep the header row current when a column has been added since the Sheet was made.
+  eventsSheet_().getRange(1, 1, 1, COLUMNS.length).setValues([COLUMNS]).setFontWeight('bold');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'onFormSubmit'; });
   if (!has) ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
@@ -112,12 +113,13 @@ function refreshSummary() {
   var sessions = {};
   ev.forEach(function (e) {
     var s = sessions[e.sid] || (sessions[e.sid] = {
-      sid: e.sid, pid: e.pid, layout: e.layout, first: e.t, last: e.t,
+      sid: e.sid, pid: e.pid, firstName: e.firstName, layout: e.layout, first: e.t, last: e.t,
       started: {}, completed: {}, abandoned: 0, back: 0, showMe: 0, blocked: 0, stuck: 0,
     });
     if (e.t > s.last) s.last = e.t;
     if (e.t < s.first) s.first = e.t;
     if (e.pid) s.pid = e.pid;
+    if (e.firstName) s.firstName = e.firstName;
     if (e.name === 'tour_start') s.started[e.tour] = true;
     if (e.name === 'tour_complete') s.completed[e.tour] = true;
     if (e.name === 'tour_abandon') s.abandoned++;
@@ -126,10 +128,10 @@ function refreshSummary() {
   });
   var sessionRows = Object.keys(sessions).map(function (k) {
     var s = sessions[k];
-    return [s.sid, s.pid, s.layout, s.first, s.last, Object.keys(s.started).length, Object.keys(s.completed).length,
+    return [s.sid, s.pid, s.firstName, s.layout, s.first, s.last, Object.keys(s.started).length, Object.keys(s.completed).length,
       s.abandoned, s.back, s.showMe, s.blocked, s.stuck];
   });
-  writeTab_('Sessions', ['sid', 'pid', 'layout', 'first seen', 'last seen', 'tours started', 'tours completed',
+  writeTab_('Sessions', ['sid', 'pid', 'first name', 'layout', 'first seen', 'last seen', 'tours started', 'tours completed',
     'abandons', 'back', 'show me', 'blocked clicks', 'stuck'], sessionRows);
 
   // Tours: starts, completions and completion rate, per tour and layout.
